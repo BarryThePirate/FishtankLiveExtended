@@ -1,5 +1,5 @@
 # FishtankLiveExtended
-A project aimed at extending functionality on fishtank.live
+An open source project aimed at extending functionality on fishtank.live
 
 # Features
 
