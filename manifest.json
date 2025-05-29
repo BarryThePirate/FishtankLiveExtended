@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Fishtank Live Extended",
+  "version": "1.0",
+  "description": "A project aimed at extending functionality on fishtank.live",
+  "permissions": ["scripting", "activeTab"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.fishtank.live/*"],
+      "js": [
+		"settings.js",
+		"src/helpers.js",
+		"src/item-crafting.js",
+		"src/settings-editor.js",
+		"src/anti-spam.js",
+		"src/filter.js",
+		"src/logging.js",
+		"src/video-player-observe.js",
+		"src/init.js"
+	  ],
+      "run_at": "document_idle"
+    }
+  ]
+}
