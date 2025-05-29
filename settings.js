@@ -2,7 +2,7 @@
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
-const RECIPE_URL = "https://gist.githubusercontent.com/BarryThePirate/42e69725c5d8ab70c85bc99ac010263a/raw/f4fe8b223bec60966d8698116a40f71e228f98b0/recipes.b64?nocache=" + Date.now();
+const RECIPE_URL = "https://gist.githubusercontent.com/BarryThePirate/42e69725c5d8ab70c85bc99ac010263a/raw/recipes.b64?nocache=" + Date.now();
 let USERNAME;
 let USER_ID;
 let CRAFTING_RECIPES;
