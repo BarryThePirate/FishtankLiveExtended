@@ -50,6 +50,8 @@ function logAdminMessage(id, header, message, type) {
   
   // Don't log mission completed messages
   if (SETTINGS.logAdminMessagesExcludeMissionComplete && header && header.toLowerCase().includes('mission complete')) return;
+  if (SETTINGS.logAdminMessagesExcludeMission && message 
+    && (message.toLowerCase().startsWith('mission complete') || message.toLowerCase().startsWith('mission accepted'))) return
   
   // Don't log polls started
   if (SETTINGS.logAdminMessagesExcludeNewPollStarted && message && message.toLowerCase().includes('new poll has started')) return;

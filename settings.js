@@ -195,9 +195,9 @@ const settingDefinitions = [
     defaultValue: false
   },
   {
-    key: "logAdminMessagesExcludeMissionComplete",
+    key: "logAdminMessagesExcludeMission",
     group: "Admin Messages",
-    displayName: "Don't Log 'Mission Complete' Messages",
+    displayName: "Don't Log 'Mission' Messages",
     type: "boolean",
     defaultValue: false
   },
