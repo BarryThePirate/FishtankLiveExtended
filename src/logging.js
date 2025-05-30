@@ -29,6 +29,10 @@ function deleteAdminMessages() {
 
 function logAdminMessage(id, header, message, type) {
   if (SETTINGS.disableAdminMessageLogging) return;
+  
+  // Force to string converstion
+  if (header) header = String(header).toLowerCase();
+  if (message) message = String(message).toLowerCase();
 	
   // Don't log admin messages sent from this plugin
   if (id.startsWith('ftl-ext')) return;
@@ -46,24 +50,24 @@ function logAdminMessage(id, header, message, type) {
   if (SETTINGS.logAdminMessagesExcludeFoundItem 
     && header
 	&& message
-	&& (header.toLowerCase().includes('found an item') || message.toLowerCase().includes('added to your inventory'))) return;
+	&& (header.includes('found an item') || message.includes('added to your inventory'))) return;
   
   // Don't log mission completed messages
-  if (SETTINGS.logAdminMessagesExcludeMissionComplete && header && header.toLowerCase().includes('mission complete')) return;
+  if (SETTINGS.logAdminMessagesExcludeMissionComplete && header && header.includes('mission complete')) return;
   if (SETTINGS.logAdminMessagesExcludeMission && message 
-    && (message.toLowerCase().startsWith('mission complete') || message.toLowerCase().startsWith('mission accepted'))) return
+    && (message.startsWith('mission complete') || message.startsWith('mission accepted'))) return
   
   // Don't log polls started
-  if (SETTINGS.logAdminMessagesExcludeNewPollStarted && message && message.toLowerCase().includes('new poll has started')) return;
+  if (SETTINGS.logAdminMessagesExcludeNewPollStarted && message && message.includes('new poll has started')) return;
   
   // Don't log medal earned messages
-  if (SETTINGS.logAdminMessagesExcludeMedalEarned && header && header.toLowerCase().includes('medal earned')) return;
+  if (SETTINGS.logAdminMessagesExcludeMedalEarned && header && header.includes('medal earned')) return;
   
   // Don't log error messages
   if (SETTINGS.logAdminMessagesExcludeError && type && type == 'error') return;
   
   // Don't log tips sent/recieved
-  if (SETTINGS.logAdminMessagesExcludeTips && message && (message.startsWith("You spent ₣") || message.startsWith("You received ₣"))) return;
+  if (SETTINGS.logAdminMessagesExcludeTips && message && (message.startsWith("you spent ₣") || message.startsWith("you received ₣"))) return;
   
   const log = loadAdminMessages();
   if (!log) return;
