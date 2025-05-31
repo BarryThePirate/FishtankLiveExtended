@@ -202,11 +202,11 @@ const settingDefinitions = [
     defaultValue: false
   },
   {
-    key: "logAdminMessagesExcludeError",
+    key: "logAdminMessagesExcludeGiftedSeasonPasses",
     group: "Admin Messages",
-    displayName: "Don't Log Error Messages",
+    displayName: "Don't Log Gifted Season Passes",
     type: "boolean",
-    defaultValue: true
+    defaultValue: false
   },
   {
     key: "logAdminMessagesExcludeTips",
@@ -216,9 +216,9 @@ const settingDefinitions = [
     defaultValue: true
   },
   {
-    key: "logAdminMessagesExcludeGiftedSeasonPasses",
+    key: "logAdminMessagesExcludeError",
     group: "Admin Messages",
-    displayName: "Don't Log Gifted Season Passes",
+    displayName: "Don't Log Error Messages",
     type: "boolean",
     defaultValue: true
   },

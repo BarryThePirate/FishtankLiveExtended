@@ -1,4 +1,4 @@
-let originalOptions;
+let originalOptions = [];
 let filterOptions = ['All', 'Not watching'];
 let currentFilter = 'All';
 
@@ -244,12 +244,12 @@ function observeDropdownOpen(dropdown) {
   if (activeObject) {
 	  updateActiveClass();
   }
-
+ 
   originalOptions.forEach(optionText => {
     const dropdownButton = Array.from(dropdown.querySelectorAll('button')).find(btn =>
       btn.textContent.trim().toLowerCase() === optionText
     );
-
+  
     if (dropdownButton) {
       dropdownButton.addEventListener('click', updateActiveClass);
     }
