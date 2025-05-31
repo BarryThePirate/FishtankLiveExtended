@@ -1,8 +1,7 @@
 let lastVideoTitle = null;
 
 // Video player detected, wait for it to start playing then check for clickable zones
-function attachVideoEvent(object) {  
-  const video = object.getElementById('hls-stream-player');
+function attachVideoEvent(video) {
   if (!video) return;
 
   // Avoid attaching multiple times
@@ -11,7 +10,7 @@ function attachVideoEvent(object) {
 
   video.addEventListener('playing', () => {
 	if (SETTINGS.disableClickableZones) return;
-    const clickableZone = getObjectFromClassNamePrefix('clickable-zones_clickable-zones', object);
+    const clickableZone = getObjectFromClassNamePrefix('clickable-zones_clickable-zones');
     if (clickableZone) {
       const adminMessage = new CustomEvent("toastopen", {
         detail: JSON.stringify({
@@ -34,9 +33,16 @@ function attachVideoEvent(object) {
 
 // If the video player is on screen, get the title of the stream, attachVideoEvent listener
 function checkForPlayer(object) {
-  const player = getObjectFromClassNamePrefix('live-stream-player_live-stream-player', object);
+  // Fallback if somehow the video player wasn't passed into this function
+  let player = null;
+  if (object && object.classList.contains(getClassNameFromPrefix('live-stream-player_live-stream-player'))) {
+    player = object;
+  } else {
+	player = getObjectFromClassNamePrefix('live-stream-player_live-stream-player');
+  }
+  
   const title = getObjectFromClassNamePrefix('live-stream-player_name', object);
-
+  
   // User was watching video stream but now no longer is
   if (!player && lastVideoTitle !== null) {
     lastVideoTitle = null;
@@ -66,6 +72,6 @@ function checkForPlayer(object) {
     }
 
     // Wait a little to allow DOM to catch up and video tag to appear
-    setTimeout(attachVideoEvent(object), 500);
+    setTimeout(attachVideoEvent(player), 500);
   }
 };

@@ -181,9 +181,9 @@ const settingDefinitions = [
 	groupToggler: true
   },
   {
-    key: "logAdminMessagesExcludeLevelUps",
+    key: "logAdminMessagesExcludeLevelUpsMissionsMedals",
     group: "Admin Messages",
-    displayName: "Don't Log 'Level Up' Messages",
+    displayName: "Don't Log 'Level Up'/'Mission'/'Medal Earned' Messages",
     type: "boolean",
     defaultValue: false
   },
@@ -195,23 +195,9 @@ const settingDefinitions = [
     defaultValue: false
   },
   {
-    key: "logAdminMessagesExcludeMission",
-    group: "Admin Messages",
-    displayName: "Don't Log 'Mission' Messages",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
     key: "logAdminMessagesExcludeNewPollStarted",
     group: "Admin Messages",
     displayName: "Don't Log 'New Poll Started' Messages",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "logAdminMessagesExcludeMedalEarned",
-    group: "Admin Messages",
-    displayName: "Don't Log 'Medal Earned' Messages",
     type: "boolean",
     defaultValue: false
   },
@@ -226,6 +212,13 @@ const settingDefinitions = [
     key: "logAdminMessagesExcludeTips",
     group: "Admin Messages",
     displayName: "Don't Log Tips Sent/Received",
+    type: "boolean",
+    defaultValue: true
+  },
+  {
+    key: "logAdminMessagesExcludeGiftedSeasonPasses",
+    group: "Admin Messages",
+    displayName: "Don't Log Gifted Season Passes",
     type: "boolean",
     defaultValue: true
   },
@@ -267,13 +260,4 @@ const settingDefinitions = [
     defaultValue: true,
 	groupToggler: true
   },
-  
-  // Site Fixes
-  /*{
-    key: "wetMarketFixes",
-    group: "Site Fixes",
-    displayName: "Wet Market Fixes",
-    type: "boolean",
-    defaultValue: true
-  },*/
 ];

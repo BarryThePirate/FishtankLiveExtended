@@ -43,8 +43,17 @@ function logAdminMessage(id, header, message, type) {
   // Don't log 'Forbidden' error messages
   if (message && message == 'Forbidden') return;
   
-  // Don't log level up messages
-  if (SETTINGS.logAdminMessagesExcludeLevelUps && header && header.toLowerCase().includes('level up')) return;
+  if (SETTINGS.logAdminMessagesExcludeLevelUpsMissionsMedals) {
+	// Don't log level up messages
+    if (header && header.toLowerCase().includes('level up')) return;
+	
+	// Don't log mission completed messages
+    if (header && header.includes('mission complete')) return;
+    if (message && (message.startsWith('mission complete') || message.startsWith('mission accepted'))) return
+	
+	// Don't log medal earned messages
+    if (header && header.includes('medal earned')) return;
+  }
   
   // Don't log items added to inventory messages
   if (SETTINGS.logAdminMessagesExcludeFoundItem 
@@ -52,16 +61,8 @@ function logAdminMessage(id, header, message, type) {
 	&& message
 	&& (header.includes('found an item') || message.includes('added to your inventory'))) return;
   
-  // Don't log mission completed messages
-  if (SETTINGS.logAdminMessagesExcludeMissionComplete && header && header.includes('mission complete')) return;
-  if (SETTINGS.logAdminMessagesExcludeMission && message 
-    && (message.startsWith('mission complete') || message.startsWith('mission accepted'))) return
-  
   // Don't log polls started
   if (SETTINGS.logAdminMessagesExcludeNewPollStarted && message && message.includes('new poll has started')) return;
-  
-  // Don't log medal earned messages
-  if (SETTINGS.logAdminMessagesExcludeMedalEarned && header && header.includes('medal earned')) return;
   
   // Don't log error messages
   if (SETTINGS.logAdminMessagesExcludeError && type && type == 'error') return;
@@ -69,7 +70,10 @@ function logAdminMessage(id, header, message, type) {
   // Don't log tips sent/recieved
   if (SETTINGS.logAdminMessagesExcludeTips && message && (message.startsWith("you spent ₣") || message.startsWith("you received ₣"))) return;
   
-  const log = loadAdminMessages();
+  // Don't log gifted season passes
+  if (SETTINGS.logAdminMessagesExcludeGiftedSeasonPasses && header && header.includes('gifted') && header.endsWith('season passes!')) return;
+  
+  let log = loadAdminMessages();
   if (!log) return;
   
   log.push({

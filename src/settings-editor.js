@@ -322,6 +322,14 @@ function injectPluginSettingsIntoModal() {
 		staffMessageWrapper.appendChild(staffMessageContainer);
 		staffMessagesWrapper.appendChild(staffMessageWrapper);
 	  });
+	  
+	  const loopMessages = getAllObjectsFromClassNamePrefix('chat-message-default_chat-message-default', staffMessagesWrapper);
+	  if (loopMessages) {
+		loopMessages.forEach(message => {
+		  // Un-hide message that were hidden by either Anti-Spam or Filter at time of saving
+		  message.style.display = '';
+		});
+	  }
 	}
 	staffMessageGroupContainer.appendChild(staffMessagesWrapper);
   }
@@ -431,7 +439,7 @@ function injectPluginSettingsIntoModal() {
   tipSection.style.overflow = 'hidden';
 
   const tipText = document.createElement("span");
-  tipText.textContent = "Like this plugin? ";
+  tipText.textContent = "Like this extension? ";
 
   const tipLink = document.createElement("span");
   tipLink.textContent = "TIP";

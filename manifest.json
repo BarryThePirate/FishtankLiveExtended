@@ -3,7 +3,7 @@
   "name": "Fishtank Live Extended",
   "version": "1.0",
   "description": "An open source project aimed at extending functionality on fishtank.live",
-  "permissions": ["scripting", "activeTab"],
+  "permissions": [],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",

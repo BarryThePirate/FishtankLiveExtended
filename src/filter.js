@@ -220,11 +220,19 @@ function getLiveStreamNames(grid) {
 /**
  * Update dropdown options and attach continuous observer for stream grid mutations.
  */
-function observeStreamGrid() {
-  const object = getObjectFromClassNamePrefix('live-streams_live-streams-grid');
-  if (object) {
-	getLiveStreamNames(object);
-	observeObject(object, getLiveStreamNames, true, true);
+function observeStreamGrid(object) {
+  // Fallback if somehow the grid wasn't passed into this function
+  let grid = null;
+  if (object && object.classList.contains(getClassNameFromPrefix('live-streams_live-streams-grid'))) {
+	grid = object;
+  } else {
+	grid = getObjectFromClassNamePrefix('live-streams_live-streams-grid');  
+  }
+ 
+  if (grid) {
+	checkForPlayer(object);
+	getLiveStreamNames(grid);
+	observeObject(grid, getLiveStreamNames, true, true);
   }
 }
 

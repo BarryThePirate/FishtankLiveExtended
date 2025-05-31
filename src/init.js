@@ -80,15 +80,6 @@ function observeChatMessages() {
 }
 
 /**
- * Handlers for when a stream video player appears
- */
-function observeVideoPlayer(object) {
-  if (!SETTINGS.autoApplyChatFilters) return;
-  attachVideoEvent(object);
-  checkForPlayer(object);
-}
-
-/**
  * Run the observers to get the data we need and setup sub observers
  * Once all sub observers are setup, stop observing document.body for efficiency
  */
@@ -146,7 +137,7 @@ const watchingFor = [
 	parentPrefix: 'main-panel_main-panel',
 	parentName: null,
 	targetPrefix: 'live-stream-player_live-stream-player',
-	then: observeVideoPlayer,
+	then: checkForPlayer,
 	stopObservingWhenFound: false
   },
 ];
