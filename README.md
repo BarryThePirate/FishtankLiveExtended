@@ -1,5 +1,6 @@
 # FishtankLiveExtended
 An open source project aimed at extending functionality on fishtank.live
+Currently available on [Chrome](https://chromewebstore.google.com/detail/dgalkmpecjmnichfppbbpgdekgfbiige?utm_source=item-share-cb) and [Firefox](https://addons.mozilla.org/en-GB/firefox/addon/fishtank-live-extended/).
 
 # Features
 
