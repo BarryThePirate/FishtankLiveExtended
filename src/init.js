@@ -240,5 +240,18 @@ document.addEventListener("toastopen", (e) => {
     return;
   }
   
+  // Close the season pass toast after 100ms to give it a bit of time to be drawn
+  if (parsed.id === "season-pass") {
+	setTimeout(() => {
+      const event = new CustomEvent("toastclose", {
+        detail: JSON.stringify({
+          "id": "season-pass"
+        })
+      });
+
+      document.dispatchEvent(event);
+    }, 100);
+  }
+  
   logAdminMessage(parsed.id, parsed.header, parsed.message, parsed.type);
 });

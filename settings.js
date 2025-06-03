@@ -12,54 +12,6 @@ const OBJECT_OBSERVER_MAP = new Map();
 const DEBUGGING = false;
 
 const settingDefinitions = [
-  // Chat Filter Settings
-  {
-    key: "disableFiltering",
-    group: "Chat Filters",
-    displayName: "Disable All Chat Filtering (Requires Refresh)",
-    type: "boolean",
-    defaultValue: false,
-	groupToggler: true
-  },
-  {
-    key: "autoApplyChatFilters",
-    group: "Chat Filters",
-    displayName: "Auto Apply Chat Filters When Viewing Streams (EXPERIMENTAL FEATURE)",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "enableChatDropdownIfDisabled",
-    group: "Chat Filters",
-    displayName: "Re-enable Dropdown if Disabled (EXPERIMENTAL FEATURE)",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "allowPings",
-    group: "Chat Filters",
-    displayName: "Always Show When You're @'ed (Doesn't Mute Audio)",
-    type: "boolean",
-    defaultValue: true,
-	onChange: () => resetChatFilter()
-  },
-  {
-    key: "filterSfx",
-    group: "Chat Filters",
-    displayName: "Apply Filter to SFX Chat Messages",
-    type: "boolean",
-    defaultValue: false,
-	onChange: () => resetChatFilter()
-  },
-  {
-    key: "filterTts",
-    group: "Chat Filters",
-    displayName: "Apply Filter to TTS Chat Messages",
-    type: "boolean",
-    defaultValue: false,
-	onChange: () => resetChatFilter()
-  },
-
   // Anti-Spam Settings
   {
     key: "disableAntiSpam",
@@ -159,6 +111,54 @@ const settingDefinitions = [
     type: "boolean",
     defaultValue: false,
     onChange: () => resetAntiSpam()
+  },
+
+  // Chat Filter Settings
+  {
+    key: "disableFiltering",
+    group: "Chat Filters",
+    displayName: "Disable All Chat Filtering (Requires Refresh)",
+    type: "boolean",
+    defaultValue: false,
+	groupToggler: true
+  },
+  {
+    key: "autoApplyChatFilters",
+    group: "Chat Filters",
+    displayName: "Auto Apply Chat Filters When Viewing Streams (EXPERIMENTAL FEATURE)",
+    type: "boolean",
+    defaultValue: false
+  },
+  {
+    key: "enableChatDropdownIfDisabled",
+    group: "Chat Filters",
+    displayName: "Re-enable Dropdown if Disabled (EXPERIMENTAL FEATURE)",
+    type: "boolean",
+    defaultValue: false
+  },
+  {
+    key: "allowPings",
+    group: "Chat Filters",
+    displayName: "Always Show When You're @'ed (Doesn't Mute Audio)",
+    type: "boolean",
+    defaultValue: true,
+	onChange: () => resetChatFilter()
+  },
+  {
+    key: "filterSfx",
+    group: "Chat Filters",
+    displayName: "Apply Filter to SFX Chat Messages",
+    type: "boolean",
+    defaultValue: false,
+	onChange: () => resetChatFilter()
+  },
+  {
+    key: "filterTts",
+    group: "Chat Filters",
+    displayName: "Apply Filter to TTS Chat Messages",
+    type: "boolean",
+    defaultValue: false,
+	onChange: () => resetChatFilter()
   },
 
   // Item Crafting

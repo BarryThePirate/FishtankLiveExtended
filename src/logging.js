@@ -31,8 +31,15 @@ function logAdminMessage(id, header, message, type) {
   if (SETTINGS.disableAdminMessageLogging) return;
   
   // Force to string converstion
-  if (header) header = String(header).toLowerCase();
-  if (message) message = String(message).toLowerCase();
+  if (header) {
+	// If it isn't a string, change it to the innerHTML
+	header = typeof header === 'string' ? header.toLowerCase() : (header?.innerHTML || header);
+  }
+  
+  if (message) {
+	// If it isn't a string, change it to the innerHTML
+	message = typeof message === 'string' ? message.toLowerCase() : (message?.innerHTML || message);
+  }
 	
   // Don't log admin messages sent from this plugin
   if (id.startsWith('ftl-ext')) return;
