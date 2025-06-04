@@ -364,7 +364,7 @@ function injectPluginSettingsIntoModal() {
 		//adminMessageContainer.innerHTML = formatUnixTimestamp(message.timestamp);
 		
 		const adminTimestampContainer = document.createElement('div');
-		adminTimestampContainer.style.width = '20%';
+		adminTimestampContainer.style.width = '22%';
 		adminTimestampContainer.style.padding = '10px';
 		adminTimestampContainer.innerHTML = formatUnixTimestamp(message.timestamp);
 		adminTimestampContainer.style.borderRight = '1px solid #505050';
@@ -374,7 +374,7 @@ function injectPluginSettingsIntoModal() {
 		adminTimestampContainer.style.color = '#55d5b4';
 		
 		const adminBodyContainer = document.createElement('div');
-		adminBodyContainer.style.width = '80%';
+		adminBodyContainer.style.width = '78%';
 		adminBodyContainer.style.display = 'flex';
 		adminBodyContainer.style.flexDirection = 'column';
 		adminBodyContainer.style.justifyContent = 'center';
@@ -383,7 +383,7 @@ function injectPluginSettingsIntoModal() {
 
 		// Title
 		const titleContainer = document.createElement('div');
-		titleContainer.textContent = message.header; // assuming 'header' is the title
+		titleContainer.textContent = message.header;
 		titleContainer.style.fontWeight = 'bold';
 		titleContainer.style.marginBottom = '6px';
 		titleContainer.style.color = '#F8EC94';

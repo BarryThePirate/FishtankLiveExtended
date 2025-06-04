@@ -147,6 +147,14 @@ function observeAddedElements(object, callback, options = {}) {
 }
 
 function formatUnixTimestamp(timestamp) {
-	const datetime = new Date(timestamp);
-	return `${datetime.getFullYear()}-${datetime.getMonth()+1}-${datetime.getDate()} ${datetime.getHours()}:${datetime.getMinutes()}:${datetime.getSeconds()}`;
+  const datetime = new Date(timestamp);
+
+  const year = datetime.getFullYear();
+  const month = String(datetime.getMonth() + 1).padStart(2, '0');
+  const day = String(datetime.getDate()).padStart(2, '0');
+  const hours = String(datetime.getHours()).padStart(2, '0');
+  const minutes = String(datetime.getMinutes()).padStart(2, '0');
+  const seconds = String(datetime.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
