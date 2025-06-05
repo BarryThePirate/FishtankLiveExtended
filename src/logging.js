@@ -134,12 +134,13 @@ function deleteStaffMessages() {
 function logStaffMessage(message) {
   if (SETTINGS.disableStaffMessageLogging) return;
 	
-  // Check if message has admin class used by staff and a few other special users
-  if (!getClassNameFromObjectWithPrefix('chat-message-default_admin', message, false)) return;
+  // Check if message has admin/wes class used by staff and a few other special users
+  if (!getClassNameFromObjectWithPrefix('chat-message-default_admin', message, false)
+	  && !getClassNameFromObjectWithPrefix('chat-message-default_wes', message, false)) return;
   
-  // Check if it uses a staff avatar image
-  if (!message.querySelector('img[src="https://cdn.fishtank.live/avatars/staff.png"]')) return;
-  
+  // Check if it uses a staff/wes avatar image
+  if (!message.querySelector('img[src="https://cdn.fishtank.live/avatars/staff.png"]')
+	  && !message.querySelector('img[src="https://cdn.fishtank.live/avatars/wes.png"]')) return;
   
   let log = loadStaffMessages();
   if (!log) return;

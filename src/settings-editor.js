@@ -59,43 +59,10 @@ function injectPluginSettingsIntoModal() {
 
   const container = document.createElement("div");
   container.classList.add('ftl-ext-settings-editor-container');
-  container.style.padding = "20px";
-  container.style.display = "flex";
-  container.style.flexDirection = "column";
-  container.style.gap = "10px";
-
+  
   const tabControls = document.createElement("div");
   tabControls.className = "ftl-ext-tab-controls";
-  tabControls.style.display = "flex";
-  tabControls.style.marginBottom = "15px";
-  tabControls.style.alignItems = 'center';
-  tabControls.style.justifyContent = 'center';
   container.appendChild(tabControls);
-  
-  const tabButtonStyle = document.createElement('style');
-  tabButtonStyle.textContent = `
-		  .ftl-ext-tab-button {
-			cursor: pointer;
-			background-color: #2b2d2e40;
-			padding: 10px;
-			border: 1px solid #505050;
-		  }
-
-		  .ftl-ext-tab-button:hover {
-			background-color: #3c3f40;
-		  }
-		  
-		  .ftl-ext-tab-button-active {
-			color: #f8ec94;
-			background-color: #F8EC941A;
-		  }
-		  
-		  .disabled-setting {
-		    opacity: 0.5;
-		    pointer-events: none;
-		  }
-		`;
-  container.appendChild(tabButtonStyle);
 
   let currentGroup = '';
   let currentGroupContainer = null;
@@ -113,7 +80,6 @@ function injectPluginSettingsIntoModal() {
       groupContainer.classList.add("ftl-ext-settings-group");
       groupContainer.dataset.group = def.group;
       groupContainer.style.display = "none"; // hidden by default
-	  groupContainer.style.margin = "0 auto";
       container.appendChild(groupContainer);
       currentGroupContainer = groupContainer;
 
@@ -133,35 +99,30 @@ function injectPluginSettingsIntoModal() {
 
       // Tab button
       const tabButton = document.createElement("button");
-	  tabButton.classList.add('ftl-ext-tab-button');
+	  tabButton.classList.add('ftl-ext-settings-tab-button');
 	  
       tabButton.textContent = def.group;
-	  //tabButton.style.border-top-right-radius = '0';
-	  //tabButton.style.border-bottom-right-radius = '0';
       tabButton.onclick = (event) => {
 		const clickedButton = event.currentTarget;
         document.querySelectorAll(".ftl-ext-settings-group").forEach(el => {
           el.style.display = "none";
         });
         groupContainer.style.display = "block";
-		const activeButton = document.querySelector(".ftl-ext-tab-button-active");
-		if (activeButton) activeButton.classList.remove('ftl-ext-tab-button-active');
-		clickedButton.classList.add('ftl-ext-tab-button-active');
+		const activeButton = document.querySelector(".ftl-ext-settings-tab-button-active");
+		if (activeButton) activeButton.classList.remove('ftl-ext-settings-tab-button-active');
+		clickedButton.classList.add('ftl-ext-settings-tab-button-active');
       };
       tabControls.appendChild(tabButton);
 
       // Group header
       const groupHeader = document.createElement('h2');
       groupHeader.textContent = def.group;
-      groupHeader.style.marginTop = '20px';
-      groupHeader.style.textAlign = 'center';
-      groupHeader.style.paddingBottom = '30px';
-	  groupHeader.style.color = '#fff';
+	  groupHeader.classList.add('ftl-ext-settings-group-header');
       groupContainer.appendChild(groupHeader);
     }
 
     const wrapper = document.createElement('div');
-    wrapper.style.marginBottom = '10px';
+	wrapper.classList.add('ftl-ext-settings-wrapper');
 	
 	if (!groupInputsMap[def.group]) groupInputsMap[def.group] = [];
 	wrapper.dataset.settingKey = def.key;
@@ -186,11 +147,11 @@ function injectPluginSettingsIntoModal() {
 				const inputs = wrapperEl.querySelectorAll('input, textarea');
 				inputs.forEach(i => {
 				  i.disabled = isChecked;
-				  i.classList.toggle('disabled-setting', isChecked);
+				  i.classList.toggle('ftl-ext-setting-disabled', isChecked);
 				});
 				
 				const label = wrapperEl.querySelector('label');
-				if (label) label.classList.toggle('disabled-setting', isChecked);
+				if (label) label.classList.toggle('ftl-ext-setting-disabled', isChecked);
 			  }
 			});
 		  });
@@ -217,14 +178,12 @@ function injectPluginSettingsIntoModal() {
         def.min != null && (input.min = def.min);
         def.max != null && (input.max = def.max);
         input.value = SETTINGS[def.key];
-        input.style.padding = '6px';
+        input.classList.add('ftl-ext-input');
         input.oninput = () => updateSetting(def.key, Number(input.value));
 
         inputWrapper.appendChild(input);
 
-        wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'center';
-        wrapper.style.gap = '10px';
+        wrapper.classList.add('ftl-ext-setting-wrapper');
 
         wrapper.appendChild(inputWrapper);
         wrapper.appendChild(numberLabel);
@@ -236,17 +195,12 @@ function injectPluginSettingsIntoModal() {
         label.innerHTML = def.displayName + '<br />(Separated by new lines, not case sensitive)';
 
         input = document.createElement('textarea');
-        input.style.padding = '6px';
+        input.classList.add('ftl-ext-input');
         input.value = SETTINGS[def.key].join('\n');
         input.rows = 5;
         input.oninput = () => updateSetting(def.key, input.value.split('\n').map(v => v.trim()).filter(Boolean));
 
-        wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'flex-start';
-        wrapper.style.gap = '10px';
-
-        label.style.whiteSpace = 'nowrap';
-        label.style.alignSelf = 'center';
+        wrapper.classList.add('ftl-ext-setting-wrapper');
 
         wrapper.appendChild(input);
         wrapper.appendChild(label);
@@ -258,19 +212,15 @@ function injectPluginSettingsIntoModal() {
   // If there's a crafting container, insert the crafting search
   if (craftingGroupContainer) {
 	const searchWrapper = document.createElement("div");
-	searchWrapper.style.marginTop = "20px";
+	searchWrapper.classList.add('ftl-ext-craft-search-wrapper');
 
 	const searchInput = document.createElement("input");
 	searchInput.type = "text";
 	searchInput.placeholder = "Crafting search...";
-	searchInput.style.padding = "6px";
-	searchInput.style.width = "100%";
+	searchInput.classList.add('ftl-ext-crafting-search-input');
 
 	const recipesContainer = document.createElement("div");
-	recipesContainer.style.marginTop = "10px";
-	recipesContainer.className = "recipes";
-	recipesContainer.style.display = "flex";
-	recipesContainer.style.justifyContent = "center";
+	recipesContainer.className = "ftl-ext-recipes-container";
 
 	searchInput.oninput = (e) => {
 	  const query = e.target.value.trim().toLowerCase();
@@ -294,13 +244,7 @@ function injectPluginSettingsIntoModal() {
   // If there's a staff message container, insert staff message log
   if (staffMessageGroupContainer) {
 	const staffMessagesWrapper = document.createElement("div");
-	staffMessagesWrapper.style.border = '1px solid #505050';
-	staffMessagesWrapper.style.backgroundColor = '#101010';
-	staffMessagesWrapper.style.textAlign = 'center';
-	staffMessagesWrapper.style.padding = '20px';
-	staffMessagesWrapper.style.maxHeight = '55vh';
-	staffMessagesWrapper.style.width = '700px';
-	staffMessagesWrapper.style.overflowY = 'auto';
+	staffMessagesWrapper.classList.add('ftl-ext-staff-messages-wrapper');
 	
 	// Get staff messages from local storage and sort asc by timestamp
 	const staffMessages = loadStaffMessages();
@@ -308,15 +252,10 @@ function injectPluginSettingsIntoModal() {
 	if (staffMessages) {
 	  staffMessages.forEach(message => {
 		const staffMessageWrapper = document.createElement("div");
-		staffMessageWrapper.style.width = '100%';
-	    staffMessageWrapper.style.textAlign = 'center';
+		staffMessageWrapper.classList.add('ftl-ext-staff-message-wrapper');
 		  
 		const staffMessageContainer = document.createElement("div");
-		staffMessageContainer.style.border = '1px solid #505050';
-		staffMessageContainer.style.width = '90%';
-		staffMessageContainer.style.padding = '10px';
-		staffMessageContainer.style.margin = '10px auto';
-		staffMessageContainer.style.backgroundColor = '#191d21';
+		staffMessageContainer.classList.add('ftl-ext-staff-message-container');
 		staffMessageContainer.innerHTML = message.html;
 		
 		staffMessageWrapper.appendChild(staffMessageContainer);
@@ -337,13 +276,7 @@ function injectPluginSettingsIntoModal() {
   // If there's aa admin message container, insert admin message log
   if (adminMessageGroupContainer) {
 	const adminMessagesWrapper = document.createElement("div");
-	adminMessagesWrapper.style.border = '1px solid #505050';
-	adminMessagesWrapper.style.backgroundColor = '#101010';
-	adminMessagesWrapper.style.textAlign = 'center';
-	adminMessagesWrapper.style.padding = '20px';
-	adminMessagesWrapper.style.maxHeight = '38vh';
-	adminMessagesWrapper.style.width = '700px';
-	adminMessagesWrapper.style.overflowY = 'auto';
+	adminMessagesWrapper.classList.add('ftl-ext-admin-messages-wrapper');
 	
 	// Get admin messages from local storage and sort asc by timestamp
 	const adminMessages = loadAdminMessages();
@@ -351,47 +284,27 @@ function injectPluginSettingsIntoModal() {
 	if (adminMessages) {
 	  adminMessages.forEach(message => {
 		const adminMessageWrapper = document.createElement("div");
-		adminMessageWrapper.style.width = '100%';
-	    adminMessageWrapper.style.textAlign = 'center';
+		adminMessageWrapper.classList.add("ftl-ext-admin-message-wrapper");
 		  
 		const adminMessageContainer = document.createElement("div");
-		adminMessageContainer.style.border = '1px solid #505050';
-		adminMessageContainer.style.width = '90%';
-		adminMessageContainer.style.margin = '10px auto';
-		adminMessageContainer.style.backgroundColor = '#191d21';
-		adminMessageContainer.style.display = 'flex';
-		adminMessageContainer.style.flexDirection = 'row';
-		//adminMessageContainer.innerHTML = formatUnixTimestamp(message.timestamp);
+		adminMessageContainer.classList.add('ftl-ext-admin-message-container');
 		
 		const adminTimestampContainer = document.createElement('div');
-		adminTimestampContainer.style.width = '22%';
-		adminTimestampContainer.style.padding = '10px';
 		adminTimestampContainer.innerHTML = formatUnixTimestamp(message.timestamp);
-		adminTimestampContainer.style.borderRight = '1px solid #505050';
-		adminTimestampContainer.style.display = 'flex';
-		adminTimestampContainer.style.alignItems = 'center';
-		adminTimestampContainer.style.justifyContent = 'center';
-		adminTimestampContainer.style.color = '#55d5b4';
+		adminTimestampContainer.classList.add('ftl-ext-admin-timestamp-container');
 		
 		const adminBodyContainer = document.createElement('div');
-		adminBodyContainer.style.width = '78%';
-		adminBodyContainer.style.display = 'flex';
-		adminBodyContainer.style.flexDirection = 'column';
-		adminBodyContainer.style.justifyContent = 'center';
-		adminBodyContainer.style.padding = '10px';
-		adminBodyContainer.style.color = '#fff';
+		adminBodyContainer.classList.add('ftl-ext-admin-body-container');
 
 		// Title
 		const titleContainer = document.createElement('div');
 		titleContainer.textContent = message.header;
-		titleContainer.style.fontWeight = 'bold';
-		titleContainer.style.marginBottom = '6px';
-		titleContainer.style.color = '#F8EC94';
+		titleContainer.classList.add('ftl-ext-admin-title');
 
 		// Message
 		const messageContainer = document.createElement('div');
 		messageContainer.textContent = message.message;
-		messageContainer.style.opacity = '0.85';
+		messageContainer.classList.add('ftl-ext-admin-message-container-message-container');
 
 		adminBodyContainer.appendChild(titleContainer);
 		adminBodyContainer.appendChild(messageContainer);
@@ -411,41 +324,24 @@ function injectPluginSettingsIntoModal() {
   if (firstGroup) firstGroup.style.display = "block";
   
   // Make the first button 'active' class for styling
-  const firstButton = tabControls.querySelector(".ftl-ext-tab-button");
+  const firstButton = tabControls.querySelector(".ftl-ext-settings-tab-button");
   if (firstButton) {
-    firstButton.classList.add("ftl-ext-tab-button-active");
-  }
-  
-  // Add rounded corner styling just to first and last button like with the profile tabs
-  const tabButtons = tabControls.querySelectorAll(".ftl-ext-tab-button");
-  if (tabButtons.length > 0) {
-    // Round left side of the first button
-    tabButtons[0].style.borderTopLeftRadius = "4px";
-    tabButtons[0].style.borderBottomLeftRadius = "4px";
-
-	// Round right side of the last button
-    const last = tabButtons[tabButtons.length - 1];
-    last.style.borderTopRightRadius = "4px";
-    last.style.borderBottomRightRadius = "4px";
+    firstButton.classList.add("ftl-ext-settings-tab-button-active");
   }
 
   modal.appendChild(container);
 
   // Tip section
   const tipSection = document.createElement("div");
-  tipSection.style.marginTop = "20px";
-  tipSection.style.textAlign = "center";
-  tipSection.style.fontSize = "14px";
-  tipSection.style.overflow = 'hidden';
+  tipSection.classList.add("ftl-ext-tip-section");
 
   const tipText = document.createElement("span");
   tipText.textContent = "Like this extension? ";
 
   const tipLink = document.createElement("span");
   tipLink.textContent = "TIP";
-  tipLink.style.color = "#F8EC94";
-  tipLink.style.cursor = "pointer";
-
+  tipLink.classList.add("ftl-ext-tip-link");
+  
   tipLink.onclick = (e) => {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent("modalclose"));
@@ -519,14 +415,14 @@ function createCustomButton() {
 	}, 100);
   };
   
-	const dropdown = getObjectFromClassNamePrefix("top-bar-user_dropdown");
-
-	const billingBtn = Array.from(dropdown.querySelectorAll("button"))
-	  .find(btn => btn.textContent.trim() === "Billing");
-
-	if (billingBtn) {
-	  dropdown.insertBefore(pluginBtn, billingBtn);
-	} else {
-	  dropdown.appendChild(pluginBtn);
-    }
+  const dropdown = getObjectFromClassNamePrefix("top-bar-user_dropdown");
+  
+  const billingBtn = Array.from(dropdown.querySelectorAll("button"))
+    .find(btn => btn.textContent.trim() === "Billing");
+  
+  if (billingBtn) {
+    dropdown.insertBefore(pluginBtn, billingBtn);
+  } else {
+    dropdown.appendChild(pluginBtn);
+  }
 }

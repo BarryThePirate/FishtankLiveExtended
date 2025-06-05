@@ -1,0 +1,186 @@
+.ftl-ext-settings-editor-container {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+  
+.ftl-ext-settings-group-header {
+  margin-top: 20px;
+  text-align: center;
+  padding-bottom: 30px;
+  color: #fff;
+}
+  
+.ftl-ext-tab-controls {
+  display: flex;
+  margin-bottom: 15px;
+  align-items: center;
+  justify-content: center;
+}
+
+.ftl-ext-settings-tab-button {
+  cursor: pointer;
+  background-color: #2b2d2e40;
+  padding: 10px;
+  border: 1px solid #505050;
+}
+
+.ftl-ext-settings-tab-button:hover {
+  background-color: #3c3f40;
+}
+
+.ftl-ext-settings-tab-button-active {
+  color: #f8ec94;
+  background-color: #F8EC941A;
+}
+
+/* Add rounded corners to first and last buttons */
+.ftl-ext-settings-tab-button:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.ftl-ext-settings-tab-button:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.ftl-ext-settings-group {
+  margin: 0 auto;
+}
+
+.ftl-ext-input {
+  padding: 6px;
+}
+
+.ftl-ext-settings-wrapper {
+  margin-bottom: 10px;
+}
+
+.ftl-ext-setting-wrapper {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ftl-ext-setting-wrapper.flex-start {
+  align-items: flex-start;
+}
+
+.ftl-ext-setting-wrapper textarea + label {
+  white-space: nowrap;
+  align-self: center;
+}
+
+.ftl-ext-setting-wrapper textarea {
+  width: 300px;
+}
+
+.ftl-ext-setting-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.ftl-ext-staff-message-wrapper {
+  width: 100%;
+  text-align: center;
+}
+
+.ftl-ext-staff-messages-wrapper {
+  border: 1px solid #505050;
+  background-color: #101010;
+  padding: 20px;
+  max-height: 55vh;
+  width: 700px;
+  overflow-y: auto;
+}
+
+.ftl-ext-staff-message-container {
+  text-align: left;
+  border: 1px solid #505050;
+  width: 90%;
+  padding: 10px;
+  margin: 10px auto;
+  background-color: #191d21;
+}
+
+.ftl-ext-admin-messages-wrapper {
+  border: 1px solid #505050;
+  background-color: #101010;
+  text-align: center;
+  padding: 20px;
+  max-height: 38vh;
+  width: 700px;
+  overflow-y: auto;
+}
+  
+.ftl-ext-admin-message-container {
+  border: 1px solid #505050;
+  width: 90%;
+  margin: 10px auto;
+  background-color: #191d21;
+  display: flex;
+  flex-direction: row;
+}
+
+.ftl-ext-admin-message-container-message-container {
+  opacity: 0.85;
+}
+  
+.ftl-ext-admin-timestamp-container {
+  width: 22%;
+  padding: 10px;
+  border-right: 1px solid #505050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #55d5b4;
+}
+
+.ftl-ext-admin-body-container {
+  width: 78%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px;
+  color: #fff;
+}
+
+.ftl-ext-admin-message-wrapper {
+  width: 100%;
+  text-align: center;
+}
+
+.ftl-ext-admin-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #F8EC94;
+}
+
+.ftl-ext-craft-search-wrapper {
+  margin-top: 20px;
+}
+
+.ftl-ext-crafting-search-input {
+  padding: 6px;
+  width: 100%;
+}
+
+.ftl-ext-recipes-container {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.ftl-ext-tip-section {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+.ftl-ext-tip-link {
+  color: #F8EC94;
+  cursor: pointer;
+}

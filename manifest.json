@@ -12,6 +12,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.fishtank.live/*"],
+	  "css": ["src/styles.css"],
       "js": [
         "settings.js",
         "src/helpers.js",
