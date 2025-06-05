@@ -61,6 +61,10 @@
   padding: 6px;
 }
 
+.ftl-ext-input-checkbox {
+  accent-color: #F8EC94;
+}
+
 .ftl-ext-settings-wrapper {
   margin-bottom: 10px;
 }

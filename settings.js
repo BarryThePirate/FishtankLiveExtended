@@ -194,50 +194,50 @@ const settingDefinitions = [
 	groupToggler: true
   },
   {
-    key: "logAdminMessagesExcludeLevelUpsMissionsMedals",
+    key: "logAdminMessagesLevelUpsMissionsMedals",
     group: "Logging",
 	subGroup: "Admin Messages",
-    displayName: "Don't Log 'Level Up'/'Mission'/'Medal Earned' Messages",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "logAdminMessagesExcludeFoundItem",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Don't Log 'Found an Item' Messages",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "logAdminMessagesExcludeNewPollStarted",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Don't Log 'New Poll Started' Messages",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "logAdminMessagesExcludeGiftedSeasonPasses",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Don't Log Gifted Season Passes",
-    type: "boolean",
-    defaultValue: false
-  },
-  {
-    key: "logAdminMessagesExcludeTips",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Don't Log Tips Sent/Received",
+    displayName: "Log 'Level Up'/'Mission'/'Medal Earned' Messages",
     type: "boolean",
     defaultValue: true
   },
   {
-    key: "logAdminMessagesExcludeError",
+    key: "logAdminMessagesFoundItem",
     group: "Logging",
 	subGroup: "Admin Messages",
-    displayName: "Don't Log Error Messages",
+    displayName: "Log 'Found an Item' Messages",
+    type: "boolean",
+    defaultValue: true
+  },
+  {
+    key: "logAdminMessagesNewPollStarted",
+    group: "Logging",
+	subGroup: "Admin Messages",
+    displayName: "Log 'New Poll Started' Messages",
+    type: "boolean",
+    defaultValue: true
+  },
+  {
+    key: "logAdminMessagesGiftedSeasonPasses",
+    group: "Logging",
+	subGroup: "Admin Messages",
+    displayName: "Log Gifted Season Passes",
+    type: "boolean",
+    defaultValue: true
+  },
+  {
+    key: "logAdminMessagesTips",
+    group: "Logging",
+	subGroup: "Admin Messages",
+    displayName: "Log Tips Sent/Received",
+    type: "boolean",
+    defaultValue: true
+  },
+  {
+    key: "logAdminMessagesError",
+    group: "Logging",
+	subGroup: "Admin Messages",
+    displayName: "Log Error Messages",
     type: "boolean",
     defaultValue: true
   },

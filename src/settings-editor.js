@@ -293,7 +293,7 @@ function injectPluginSettingsIntoModal() {
     switch (def.type) {
       // ─── Boolean (checkbox) ─────────────────────────────────────────────────
       case "boolean":
-        inputEl = createInput("checkbox", [], { checked: SETTINGS[def.key] }, () => {
+        inputEl = createInput("checkbox", ['ftl-ext-input-checkbox'], { checked: SETTINGS[def.key] }, () => {
           updateSetting(def.key, inputEl.checked);
         });
 
