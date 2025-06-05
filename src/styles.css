@@ -98,7 +98,7 @@
   border: 1px solid #505050;
   background-color: #101010;
   padding: 20px;
-  max-height: 55vh;
+  max-height: 52vh;
   width: 700px;
   overflow-y: auto;
 }
@@ -117,7 +117,7 @@
   background-color: #101010;
   text-align: center;
   padding: 20px;
-  max-height: 38vh;
+  max-height: 36vh;
   width: 700px;
   overflow-y: auto;
 }
@@ -129,6 +129,7 @@
   background-color: #191d21;
   display: flex;
   flex-direction: row;
+  font-size: 14px !important;
 }
 
 .ftl-ext-admin-message-container-message-container {
@@ -136,17 +137,18 @@
 }
   
 .ftl-ext-admin-timestamp-container {
-  width: 22%;
+  width: 20%;
   padding: 10px;
   border-right: 1px solid #505050;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #55d5b4;
+  font-size: 14px !important;
 }
 
 .ftl-ext-admin-body-container {
-  width: 78%;
+  width: 80%;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -190,4 +192,5 @@
 .ftl-ext-tip-link {
   color: #F8EC94;
   cursor: pointer;
+  text-decoration: none;
 }

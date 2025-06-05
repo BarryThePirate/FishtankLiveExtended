@@ -72,6 +72,8 @@ function chatMessagesMutationObserved(message) {
   applyAntiSpam(message);
   applyChatFilter(message);
   logStaffMessage(message);
+  logPing(message);
+  logTts(message);
 }
 
 function observeChatMessages() {

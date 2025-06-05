@@ -156,5 +156,5 @@ function formatUnixTimestamp(timestamp) {
   const minutes = String(datetime.getMinutes()).padStart(2, '0');
   const seconds = String(datetime.getSeconds()).padStart(2, '0');
 
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return `${hours}:${minutes}:${seconds} ${year}-${month}-${day}`;
 }

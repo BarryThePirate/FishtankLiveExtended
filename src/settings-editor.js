@@ -149,6 +149,9 @@ function injectPluginSettingsIntoModal() {
     craftingGroupContainer = null,
     staffMessageGroupContainer = null,
     adminMessageGroupContainer = null;
+    pingsGroupContainer = null;
+    ttsGroupContainer = null;
+	
 
   const groupInputsMap = {};       // { groupName: [ wrapperDiv, … ] }
   const subGroupContainers = {};   // { groupName: { subGroupName: <div> } }
@@ -259,6 +262,12 @@ function injectPluginSettingsIntoModal() {
         }
         if (grp === "Logging" && sub === "Admin Messages") {
           adminMessageGroupContainer = subDiv;
+        }
+		if (grp === "Logging" && sub === "Pings") {
+          pingsGroupContainer = subDiv;
+        }
+		if (grp === "Logging" && sub === "TTS") {
+          ttsGroupContainer = subDiv;
         }
       }
 
@@ -457,6 +466,65 @@ function injectPluginSettingsIntoModal() {
 
     adminMessageGroupContainer.appendChild(adminWrapper);
   }
+  
+  // ─── Pings Log ─────────────────────────────────────────────────────────
+  if (staffMessageGroupContainer) {
+    const pingsWrapper = createEl("div", ["ftl-ext-staff-messages-wrapper"]);
+    const pings = loadPings();
+    pings.sort((a, b) => b.timestamp - a.timestamp);
+
+    pings.forEach(msg => {
+      const msgOuter = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+      const msgInner = createEl("div", ["ftl-ext-staff-message-container"]);
+      msgInner.innerHTML = msg.html;
+      msgOuter.appendChild(msgInner);
+      pingsWrapper.appendChild(msgOuter);
+    });
+
+    // Un-hide any nested chat‐message elements:
+    const nested = pingsWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
+    nested.forEach(m => {
+      m.style.display = "";
+    });
+
+    pingsGroupContainer.appendChild(pingsWrapper);
+  }
+  
+  // ─── TTS Log ─────────────────────────────────────────────────────────
+  if (ttsGroupContainer) {
+    const ttsWrapper = createEl("div", ["ftl-ext-admin-messages-wrapper"]);
+    const tts = loadTts();
+    tts.sort((a, b) => b.timestamp - a.timestamp);
+
+    tts.forEach(msg => {
+      const outer = createEl("div", ["ftl-ext-admin-message-wrapper"]);
+      const inner = createEl("div", ["ftl-ext-admin-message-container"]);
+
+      const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+      timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
+	  
+	  //const fromDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+     // fromDiv.innerHTML = msg.from;
+
+      const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+
+      const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
+      titleDiv.textContent = msg.room;
+
+      const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
+      messageDiv.textContent = msg.message;
+
+      bodyWrapper.appendChild(titleDiv);
+      bodyWrapper.appendChild(messageDiv);
+      inner.appendChild(timestampDiv);
+	  //inner.appendChild(fromDiv);
+      inner.appendChild(bodyWrapper);
+      outer.appendChild(inner);
+      ttsWrapper.appendChild(outer);
+    });
+
+    ttsGroupContainer.appendChild(ttsWrapper);
+  }
 
   // 11) Show the first group by default
   const firstGroupDiv = outerContainer.querySelector(".ftl-ext-settings-group");
@@ -474,6 +542,8 @@ function injectPluginSettingsIntoModal() {
 
   // 13) Build the “Tip” section at the very bottom
   const tipSection = createEl("div", ["ftl-ext-tip-section"]);
+
+  // — Tip text + link
   const tipText = document.createElement("span");
   tipText.textContent = "Like this extension? ";
   const tipLink = createEl("span", ["ftl-ext-tip-link"]);
@@ -508,6 +578,20 @@ function injectPluginSettingsIntoModal() {
   });
   tipSection.appendChild(tipText);
   tipSection.appendChild(tipLink);
+  
+  // ── Insert a line break ─────────────────────────────────────────────────
+  tipSection.appendChild(document.createTextNode("\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"));
+  
+  // — Contribute text + link
+  const contributeText = document.createElement("span");
+  contributeText.textContent = "Want to contribute? ";
+  const contributeLink = createEl("a", ["ftl-ext-tip-link"]);
+  contributeLink.textContent = "GITHUB";
+  contributeLink.href = "https://github.com/BarryThePirate/FishtankLiveExtended";
+  contributeLink.target = "_blank";
+  tipSection.appendChild(contributeText);
+  tipSection.appendChild(contributeLink);
+  
   modal.appendChild(tipSection);
 }
 

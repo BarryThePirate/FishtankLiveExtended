@@ -2,6 +2,8 @@
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
+const PINGS_LOG_KEY = "ftl-ext-pings-log";
+const TTS_LOG_KEY = "ftl-ext-tts-log";
 const RECIPE_URL = "https://gist.githubusercontent.com/BarryThePirate/42e69725c5d8ab70c85bc99ac010263a/raw/recipes.b64?nocache=" + Date.now();
 let USERNAME;
 let USER_ID;
@@ -265,6 +267,48 @@ const settingDefinitions = [
     group: "Logging",
 	subGroup: "Staff Messages",
     displayName: "Staff Message Log Size (Max 200)",
+    type: "number",
+	min: 1,
+	max: 200,
+    defaultValue: 50
+  },
+  
+  // Pings Logging
+  {
+    key: "disablePingsLogging",
+    group: "Logging",
+	subGroup: "Pings",
+    displayName: "Disable Pings Logging",
+    type: "boolean",
+    defaultValue: false,
+	groupToggler: true
+  },
+  {
+    key: "logPingsNumber",
+    group: "Logging",
+	subGroup: "Pings",
+    displayName: "Pings Log Size (Max 200)",
+    type: "number",
+	min: 1,
+	max: 200,
+    defaultValue: 50
+  },
+  
+  // TTS Logging
+  {
+    key: "disableTtsLogging",
+    group: "Logging",
+	subGroup: "TTS",
+    displayName: "Disable TTS Logging",
+    type: "boolean",
+    defaultValue: false,
+	groupToggler: true
+  },
+  {
+    key: "logTtsNumber",
+    group: "Logging",
+	subGroup: "TTS",
+    displayName: "TTS Log Size (Max 200)",
     type: "number",
 	min: 1,
 	max: 200,

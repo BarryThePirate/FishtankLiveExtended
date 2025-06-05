@@ -160,3 +160,129 @@ function logStaffMessage(message) {
   
   saveStaffMessages(log);
 }
+
+/**
+ * Pings logging
+ */
+function loadPings() {
+  const saved = localStorage.getItem(PINGS_LOG_KEY);
+
+  try {
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    console.warn("[⚠️] Failed to parse saved pings.");
+  }
+}
+
+function savePings(log) {  
+  try {
+    localStorage.setItem(PINGS_LOG_KEY, JSON.stringify(log));
+  } catch (e) {
+    console.error('[❌] Failed to save pings log:', e);
+  }
+}
+
+function deletePings() {
+	try {
+    localStorage.removeItem(PINGS_LOG_KEY);
+  } catch (e) {
+    console.error('[❌] Failed to delete pings log:', e);
+  }
+}
+
+function logPing(message) {
+  if (SETTINGS.disablePingsLogging) return;
+  
+  if (!USERNAME) return;
+  
+  // Check the message contains mentions
+  if (!getClassNameFromObjectWithPrefix('chat-message-default_mention', message, false)) return;
+  
+  let mentioned = false;
+  const chatMentions = getAllObjectsFromClassNamePrefix('chat-message-default_mention', message);
+  chatMentions.forEach(chatMention => {
+    if(chatMention.textContent.toLowerCase() === '@'+USERNAME.toLowerCase()) {
+      mentioned = true;
+    }
+  });
+  if (!mentioned) return;
+  
+  let log = loadPings();
+  if (!log) return;
+  log.push({
+    html: message.outerHTML,
+    timestamp: Date.now()
+  });
+  
+  // Make sure the number isn't somehow higher than it should be
+  let numberOfMessages = SETTINGS.logPingsNumber;
+  if (numberOfMessages > SETTINGS.logPingsNumber.max) numberOfMessages = SETTINGS.logPingsNumber.max;
+  
+  // Keep only the last X number of messages (changed by user in settings)
+  if (log.length > numberOfMessages) {
+    log = log.slice(-numberOfMessages);
+  }
+  
+  savePings(log);
+}
+
+/**
+ * TTS logging
+ */
+function loadTts() {
+  const saved = localStorage.getItem(TTS_LOG_KEY);
+
+  try {
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    console.warn("[⚠️] Failed to parse saved TTS.");
+  }
+}
+
+function saveTts(log) {  
+  try {
+    localStorage.setItem(TTS_LOG_KEY, JSON.stringify(log));
+  } catch (e) {
+    console.error('[❌] Failed to save TTS log:', e);
+  }
+}
+
+function deleteTts() {
+	try {
+    localStorage.removeItem(TTS_LOG_KEY);
+  } catch (e) {
+    console.error('[❌] Failed to delete TTS log:', e);
+  }
+}
+
+function logTts(message) {
+  if (SETTINGS.disableTtsLogging) return;
+  
+  if (!getClassNameFromObjectWithPrefix('chat-message-tts_chat-message-tts', message, false)) return;
+  
+  const from = getObjectFromClassNamePrefix('chat-message-tts_from', message);
+  const room = getObjectFromClassNamePrefix('chat-message-tts_room', message);
+  const ttsMessage = getObjectFromClassNamePrefix('chat-message-tts_message', message);
+  
+  if (!from || !room || !ttsMessage) return;
+  
+  let log = loadTts();
+  if (!log) return;
+  log.push({
+    from: from.innerHTML,
+    room: room.innerHTML,
+    message: ttsMessage.innerHTML,
+    timestamp: Date.now()
+  });
+  
+  // Make sure the number isn't somehow higher than it should be
+  let numberOfMessages = SETTINGS.logTtsNumber;
+  if (numberOfMessages > SETTINGS.logTtsNumber.max) numberOfMessages = SETTINGS.logTtsNumber.max;
+  
+  // Keep only the last X number of messages (changed by user in settings)
+  if (log.length > numberOfMessages) {
+    log = log.slice(-numberOfMessages);
+  }
+  
+  saveTts(log);
+}
