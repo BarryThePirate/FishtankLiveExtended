@@ -215,10 +215,10 @@ function injectPluginSettingsIntoModal() {
       mainTabBar.appendChild(mainTabButton);
 
       // In that groupDiv, add an <h2> header:
-      const groupHeader = document.createElement("h2");
+      /*const groupHeader = document.createElement("h2");
       groupHeader.textContent = def.group;
       groupHeader.classList.add("ftl-ext-settings-group-header");
-      groupDiv.appendChild(groupHeader);
+      groupDiv.appendChild(groupHeader);*/
 
       // Create a sub‐tab‐bar area inside this group:
       const subTabBar = createEl("div", ["ftl-ext-sub-tab-controls"]);
@@ -451,10 +451,10 @@ function injectPluginSettingsIntoModal() {
       const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
 
       const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
-      titleDiv.textContent = msg.header;
+      titleDiv.textContent = msg.header?.toUpperCase();
 
       const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
-      messageDiv.textContent = msg.message;
+      messageDiv.textContent = msg.message?.toUpperCase();
 
       bodyWrapper.appendChild(titleDiv);
       bodyWrapper.appendChild(messageDiv);
