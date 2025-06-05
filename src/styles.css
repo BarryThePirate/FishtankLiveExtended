@@ -35,6 +35,13 @@
   background-color: #F8EC941A;
 }
 
+.ftl-ext-sub-tab-controls {
+  display: flex;
+  margin-bottom: 15px;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Add rounded corners to first and last buttons */
 .ftl-ext-settings-tab-button:first-child {
   border-top-left-radius: 4px;

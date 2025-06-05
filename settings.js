@@ -12,7 +12,9 @@ const OBJECT_OBSERVER_MAP = new Map();
 const DEBUGGING = false;
 
 const settingDefinitions = [
-  // Anti-Spam Settings
+ /**
+  * Anti-Spam Settings
+  */
   {
     key: "disableAntiSpam",
     group: "Anti-Spam",
@@ -113,7 +115,9 @@ const settingDefinitions = [
     onChange: () => resetAntiSpam()
   },
 
-  // Chat Filter Settings
+ /**
+  * Chat Filter Settings
+  */
   {
     key: "disableFiltering",
     group: "Chat Filters",
@@ -160,8 +164,10 @@ const settingDefinitions = [
     defaultValue: false,
 	onChange: () => resetChatFilter()
   },
-
-  // Item Crafting
+  
+ /**
+  * Item Crafting
+  */
   {
     key: "displayRecipesInCraftModal",
     group: "Crafting",
@@ -171,10 +177,15 @@ const settingDefinitions = [
 	groupToggler: true
   },
   
+ /**
+  * Logging
+  */
+  
   // Admin Message Logging
   {
     key: "disableAdminMessageLogging",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Disable Admin Message Logging",
     type: "boolean",
     defaultValue: false,
@@ -182,49 +193,56 @@ const settingDefinitions = [
   },
   {
     key: "logAdminMessagesExcludeLevelUpsMissionsMedals",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log 'Level Up'/'Mission'/'Medal Earned' Messages",
     type: "boolean",
     defaultValue: false
   },
   {
     key: "logAdminMessagesExcludeFoundItem",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log 'Found an Item' Messages",
     type: "boolean",
     defaultValue: false
   },
   {
     key: "logAdminMessagesExcludeNewPollStarted",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log 'New Poll Started' Messages",
     type: "boolean",
     defaultValue: false
   },
   {
     key: "logAdminMessagesExcludeGiftedSeasonPasses",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log Gifted Season Passes",
     type: "boolean",
     defaultValue: false
   },
   {
     key: "logAdminMessagesExcludeTips",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log Tips Sent/Received",
     type: "boolean",
     defaultValue: true
   },
   {
     key: "logAdminMessagesExcludeError",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Don't Log Error Messages",
     type: "boolean",
     defaultValue: true
   },
   {
     key: "logAdminMessagesNumber",
-    group: "Admin Messages",
+    group: "Logging",
+	subGroup: "Admin Messages",
     displayName: "Admin Message Log Size (Max 200)",
     type: "number",
 	min: 1,
@@ -235,7 +253,8 @@ const settingDefinitions = [
   // Staff Message Logging
   {
     key: "disableStaffMessageLogging",
-    group: "Staff Messages",
+    group: "Logging",
+	subGroup: "Staff Messages",
     displayName: "Disable Staff Message Logging",
     type: "boolean",
     defaultValue: false,
@@ -243,7 +262,8 @@ const settingDefinitions = [
   },
   {
     key: "logStaffMessagesNumber",
-    group: "Staff Messages",
+    group: "Logging",
+	subGroup: "Staff Messages",
     displayName: "Staff Message Log Size (Max 200)",
     type: "number",
 	min: 1,
@@ -251,7 +271,9 @@ const settingDefinitions = [
     defaultValue: 50
   },
   
-  // Clickable Zones
+ /**
+  * Clickable Zones
+  */
   {
     key: "disableClickableZones",
     group: "Clickable Zones",

@@ -1,3 +1,7 @@
+// =======================
+//  CONSTANTS
+// =======================
+
 const iconSVG = `
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
   <!-- Skull -->
@@ -38,314 +42,445 @@ const iconSVG = `
   <rect x="20" y="22" width="2" height="2"></rect>
   <rect x="18" y="18" width="2" height="2"></rect>
   <rect x="16" y="16" width="2" height="2"></rect>
-  
 </svg>
 `;
 
+
+// =======================
+//  ELEMENT-CREATION HELPERS
+// =======================
+
+/**
+ * Create a new element with optional classes, and return it.
+ */
+function createEl(tag, classList = []) {
+  const el = document.createElement(tag);
+  classList.forEach(c => el.classList.add(c));
+  return el;
+}
+
+/**
+ * Create a <button> with specified text, classes, and click handler.
+ */
+function createButton(text, classList = [], onClick) {
+  const btn = createEl("button", classList);
+  btn.textContent = text;
+  if (onClick) btn.addEventListener("click", onClick);
+  return btn;
+}
+
+/**
+ * Create an <input> of given type, with optional classes and attributes.
+ */
+function createInput(type, classList = [], attributes = {}, onChange) {
+  const inp = createEl("input", classList);
+  inp.type = type;
+  Object.entries(attributes).forEach(([attr, value]) => {
+    if (value !== null && value !== undefined) {
+      inp[attr] = value;
+    }
+  });
+  if (onChange) inp.addEventListener("change", onChange);
+  return inp;
+}
+
+/**
+ * Create a <textarea> with optional classes, rows, and input handler.
+ */
+function createTextarea(classList = [], rows = 3, onInput) {
+  const ta = createEl("textarea", classList);
+  ta.rows = rows;
+  if (onInput) ta.addEventListener("input", onInput);
+  return ta;
+}
+
+/**
+ * Wrap a label + an input‐like element in a <div> with wrapper classes.
+ */
+function wrapWithLabel(inputEl, labelText, wrapperClasses = []) {
+  const wrapper = createEl("div", wrapperClasses);
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  wrapper.appendChild(inputEl);
+  wrapper.appendChild(label);
+  return wrapper;
+}
+
+
+// ============================
+//  SETTINGS-EDITOR MAIN LOGIC
+// ============================
+
+/**
+ * Build the entire settings editor UI and insert it into the given modal container.
+ */
 function injectPluginSettingsIntoModal() {
+  // 1) Locate modal, exit early if not found:
   const modal = getObjectFromClassNamePrefix("modal_body");
   if (!modal) return;
 
-  const tipButton = modal.querySelector("button[type='submit']");
-  if (!tipButton) return;
+  // 2) Verify there's a “submit” button (model has finished loading):
+  if (!modal.querySelector("button[type='submit']")) return;
 
+  // 3) Change the modal title:
   const header = getObjectFromClassNamePrefix("modal_title");
-  header.innerHTML = 'Fishtank Live Extended Settings';
+  if (header) {
+    header.innerHTML = "Fishtank Live Extended Settings";
+  }
 
+  // 4) Grab some stylesheet‐derived classnames to reuse later:
   const labelClass = getClassNameFromPrefix("input_input");
   const inputWrapperClass = getClassNameFromPrefix("input_input-wrapper");
 
+  // 5) Wipe out existing modal contents:
   modal.innerHTML = "";
 
-  const container = document.createElement("div");
-  container.classList.add('ftl-ext-settings-editor-container');
-  
-  const tabControls = document.createElement("div");
-  tabControls.className = "ftl-ext-tab-controls";
-  container.appendChild(tabControls);
+  // 6) Our outer container
+  const outerContainer = createEl("div", ["ftl-ext-settings-editor-container"]);
 
-  let currentGroup = '';
-  let currentGroupContainer = null;
-  let craftingGroupContainer = null;
-  let adminMessageGroupContainer = null;
-  let staffMessageGroupContainer = null;
-  const groupInputsMap = {};
-  
+  // 7) Main tab‐bar
+  const mainTabBar = createEl("div", ["ftl-ext-tab-controls"]);
+  outerContainer.appendChild(mainTabBar);
+
+  // 8) We'll keep track of:
+  let
+    currentGroupName = "",
+    currentGroupContainer = null,
+    craftingGroupContainer = null,
+    staffMessageGroupContainer = null,
+    adminMessageGroupContainer = null;
+
+  const groupInputsMap = {};       // { groupName: [ wrapperDiv, … ] }
+  const subGroupContainers = {};   // { groupName: { subGroupName: <div> } }
+  const subGroupTabButtons = {};   // { groupName: { subGroupName: <button> } }
+  let lastCreatedGroupContainer = null;
+
+  // 9) Iterate over each settingDefinition exactly in order
   settingDefinitions.forEach(def => {
-    if (def.group !== currentGroup) {
-      currentGroup = def.group;
+    // 9a) If we’ve changed to a new group, create its container + tab button
+    if (def.group !== currentGroupName) {
+      currentGroupName = def.group;
 
-      // Create group container
-      const groupContainer = document.createElement("div");
-      groupContainer.classList.add("ftl-ext-settings-group");
-      groupContainer.dataset.group = def.group;
-      groupContainer.style.display = "none"; // hidden by default
-      container.appendChild(groupContainer);
-      currentGroupContainer = groupContainer;
+      // Create & hide the group’s main container:
+      const groupDiv = createEl("div", ["ftl-ext-settings-group"]);
+      groupDiv.dataset.group = def.group;
+      groupDiv.style.display = "none";
+      outerContainer.appendChild(groupDiv);
+      lastCreatedGroupContainer = groupDiv;
+      currentGroupContainer = groupDiv;
 
-	  switch (currentGroup) {
-		  case 'Crafting':
-		    craftingGroupContainer = groupContainer;
-			break;
-		  case 'Admin Messages':
-			adminMessageGroupContainer = groupContainer;
-			break;
-		  case 'Staff Messages':
-			staffMessageGroupContainer = groupContainer;
-			break;
-		  default:
-			break;
-	  }
+      // If it’s “Crafting”, remember it for later:
+      if (def.group === "Crafting") {
+        craftingGroupContainer = groupDiv;
+      }
+      // If it’s “Logging”, nothing to store until subgroups arrive.
 
-      // Tab button
-      const tabButton = document.createElement("button");
-	  tabButton.classList.add('ftl-ext-settings-tab-button');
-	  
-      tabButton.textContent = def.group;
-      tabButton.onclick = (event) => {
-		const clickedButton = event.currentTarget;
+      // Record data structures for subgroups:
+      subGroupContainers[def.group] = {};
+      subGroupTabButtons[def.group] = {};
+
+      // Build a main‐tab button for this group:
+      const mainTabButton = createButton(def.group, ["ftl-ext-settings-tab-button"], (event) => {
+        // Hide every group
         document.querySelectorAll(".ftl-ext-settings-group").forEach(el => {
           el.style.display = "none";
         });
-        groupContainer.style.display = "block";
-		const activeButton = document.querySelector(".ftl-ext-settings-tab-button-active");
-		if (activeButton) activeButton.classList.remove('ftl-ext-settings-tab-button-active');
-		clickedButton.classList.add('ftl-ext-settings-tab-button-active');
-      };
-      tabControls.appendChild(tabButton);
+        // Show this group
+        groupDiv.style.display = "block";
 
-      // Group header
-      const groupHeader = document.createElement('h2');
+        // Deactivate any previously active main tab
+        const prevActive = document.querySelector(".ftl-ext-settings-tab-button-active");
+        if (prevActive) {
+          prevActive.classList.remove("ftl-ext-settings-tab-button-active");
+        }
+        event.currentTarget.classList.add("ftl-ext-settings-tab-button-active");
+
+        // If subgroups exist, show the first subgroup by default:
+        const subContainers = subGroupContainers[def.group];
+        const subButtons = subGroupTabButtons[def.group];
+        const firstSubKey = Object.keys(subContainers)[0];
+        if (firstSubKey) {
+          // Hide all sub-containers
+          Object.values(subContainers).forEach(c => c.style.display = "none");
+          // Deactivate all sub‐tabs
+          Object.values(subButtons).forEach(b => b.classList.remove("ftl-ext-settings-tab-button-active"));
+          // Show & activate the first one
+          subContainers[firstSubKey].style.display = "block";
+          subButtons[firstSubKey].classList.add("ftl-ext-settings-tab-button-active");
+        }
+      });
+      mainTabBar.appendChild(mainTabButton);
+
+      // In that groupDiv, add an <h2> header:
+      const groupHeader = document.createElement("h2");
       groupHeader.textContent = def.group;
-	  groupHeader.classList.add('ftl-ext-settings-group-header');
-      groupContainer.appendChild(groupHeader);
+      groupHeader.classList.add("ftl-ext-settings-group-header");
+      groupDiv.appendChild(groupHeader);
+
+      // Create a sub‐tab‐bar area inside this group:
+      const subTabBar = createEl("div", ["ftl-ext-sub-tab-controls"]);
+      groupDiv.appendChild(subTabBar);
     }
 
-    const wrapper = document.createElement('div');
-	wrapper.classList.add('ftl-ext-settings-wrapper');
-	
-	if (!groupInputsMap[def.group]) groupInputsMap[def.group] = [];
-	wrapper.dataset.settingKey = def.key;
-	groupInputsMap[def.group].push(wrapper);
+    // 9b) Handle subGroup if it exists
+    if (def.subGroup) {
+      const grp = def.group;
+      const sub = def.subGroup;
 
-    const label = document.createElement('label');
-    label.textContent = '  ' + def.displayName;
+      // If we haven’t made a container for this subgroup yet, do it now:
+      if (!subGroupContainers[grp][sub]) {
+        // Create its hidden container:
+        const subDiv = createEl("div", ["ftl-ext-subgroup-container"]);
+        subDiv.style.display = "none";
+        lastCreatedGroupContainer.appendChild(subDiv);
+        subGroupContainers[grp][sub] = subDiv;
 
-    let input;
+        // Create the tab button for this subGroup
+        const subBtn = createButton(sub, ["ftl-ext-settings-tab-button"], () => {
+          // Hide other sub‐containers in this group
+          Object.values(subGroupContainers[grp]).forEach(c => {
+            c.style.display = "none";
+          });
+          // Deactivate all sub buttons
+          Object.values(subGroupTabButtons[grp]).forEach(b => {
+            b.classList.remove("ftl-ext-settings-tab-button-active");
+          });
+          // Show & activate this sub‐container
+          subDiv.style.display = "block";
+          subBtn.classList.add("ftl-ext-settings-tab-button-active");
+        });
+        // Add that button into the group’s subTabBar
+        lastCreatedGroupContainer.querySelector(".ftl-ext-sub-tab-controls").appendChild(subBtn);
+        subGroupTabButtons[grp][sub] = subBtn;
+
+        // If it’s Logging→“Staff Messages” or “Admin Messages”, store for later:
+        if (grp === "Logging" && sub === "Staff Messages") {
+          staffMessageGroupContainer = subDiv;
+        }
+        if (grp === "Logging" && sub === "Admin Messages") {
+          adminMessageGroupContainer = subDiv;
+        }
+      }
+
+      // Now, for subGroups, the “currentGroupContainer” is that subDiv:
+      currentGroupContainer = subGroupContainers[def.group][def.subGroup];
+    }
+
+    // 9c) For every definition, we create its <div class="ftl-ext-settings-wrapper"> and then the input+label
+    const wrapperDiv = createEl("div", ["ftl-ext-settings-wrapper"]);
+    wrapperDiv.dataset.settingKey = def.key;
+    // Keep track of each group’s wrapperDiv so groupToggler can disable siblings later
+    if (!groupInputsMap[def.group]) {
+      groupInputsMap[def.group] = [];
+    }
+    groupInputsMap[def.group].push(wrapperDiv);
+
+    // Build the label text node (for boolean & text-array cases)
+    const labelEl = document.createElement("label");
+    labelEl.textContent = "  " + def.displayName;
+
+    // Now switch by def.type
+    let inputEl;
     switch (def.type) {
-      case 'boolean':
-        input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = SETTINGS[def.key];
-        input.onchange = () => updateSetting(def.key, input.checked);
-		
-		if (def.groupToggler) {
-		  input.addEventListener('change', () => {
-			const isChecked = input.checked;
-			groupInputsMap[def.group].forEach(wrapperEl => {
-			  if (wrapperEl.dataset.settingKey !== def.key) {
-				const inputs = wrapperEl.querySelectorAll('input, textarea');
-				inputs.forEach(i => {
-				  i.disabled = isChecked;
-				  i.classList.toggle('ftl-ext-setting-disabled', isChecked);
-				});
-				
-				const label = wrapperEl.querySelector('label');
-				if (label) label.classList.toggle('ftl-ext-setting-disabled', isChecked);
-			  }
-			});
-		  });
+      // ─── Boolean (checkbox) ─────────────────────────────────────────────────
+      case "boolean":
+        inputEl = createInput("checkbox", [], { checked: SETTINGS[def.key] }, () => {
+          updateSetting(def.key, inputEl.checked);
+        });
 
-		  // Trigger initial state
-		  setTimeout(() => input.dispatchEvent(new Event('change')), 0);
-		}
+        // If groupToggler: disable/enable siblings on change
+        if (def.groupToggler) {
+          inputEl.addEventListener("change", () => {
+            const isChecked = inputEl.checked;
+            groupInputsMap[def.group].forEach(siblingWrapper => {
+              if (siblingWrapper.dataset.settingKey !== def.key) {
+                // disable/enable any <input> or <textarea> inside that wrapper
+                siblingWrapper.querySelectorAll("input, textarea").forEach(el => {
+                  el.disabled = isChecked;
+                  el.classList.toggle("ftl-ext-setting-disabled", isChecked);
+                });
+                // also toggle the label style
+                const lbl = siblingWrapper.querySelector("label");
+                if (lbl) {
+                  lbl.classList.toggle("ftl-ext-setting-disabled", isChecked);
+                }
+              }
+            });
+          });
+          // Trigger initial state
+          setTimeout(() => inputEl.dispatchEvent(new Event("change")), 0);
+        }
 
-        wrapper.appendChild(input);
-        wrapper.appendChild(label);
-        currentGroupContainer.appendChild(wrapper);
+        // Append checkbox + label, then add to currentGroupContainer
+        wrapperDiv.appendChild(inputEl);
+        wrapperDiv.appendChild(labelEl);
+        currentGroupContainer.appendChild(wrapperDiv);
         break;
 
-      case 'number':
-        const numberLabel = document.createElement("label");
-        numberLabel.textContent = def.displayName;
-        if (labelClass) numberLabel.className = labelClass;
+      // ─── Number ────────────────────────────────────────────────────────────────
+      case "number":
+        // Create number <input>, plus wrapper div (to apply inputWrapperClass if present)
+        const numberInputWrapper = createEl("div", []);
+        if (inputWrapperClass) {
+          numberInputWrapper.classList.add(inputWrapperClass);
+        }
+        inputEl = createInput("number", ["ftl-ext-input"], {
+          min: def.min != null ? def.min : null,
+          max: def.max != null ? def.max : null,
+          value: SETTINGS[def.key]
+        }, () => {
+          updateSetting(def.key, Number(inputEl.value));
+        });
+        numberInputWrapper.appendChild(inputEl);
 
-        const inputWrapper = document.createElement("div");
-        if (inputWrapperClass) inputWrapper.className = inputWrapperClass;
+        // Label for the number field
+        const numberLabelEl = document.createElement("label");
+        numberLabelEl.textContent = def.displayName;
+        if (labelClass) {
+          numberLabelEl.classList.add(labelClass);
+        }
 
-        input = document.createElement('input');
-        input.type = 'number';
-        def.min != null && (input.min = def.min);
-        def.max != null && (input.max = def.max);
-        input.value = SETTINGS[def.key];
-        input.classList.add('ftl-ext-input');
-        input.oninput = () => updateSetting(def.key, Number(input.value));
+        // wrapperDiv also gets a “ftl-ext-setting-wrapper” (in addition to ftl-ext-settings-wrapper)
+        wrapperDiv.classList.add("ftl-ext-setting-wrapper");
+        wrapperDiv.appendChild(numberInputWrapper);
+        wrapperDiv.appendChild(numberLabelEl);
 
-        inputWrapper.appendChild(input);
-
-        wrapper.classList.add('ftl-ext-setting-wrapper');
-
-        wrapper.appendChild(inputWrapper);
-        wrapper.appendChild(numberLabel);
-
-        currentGroupContainer.appendChild(wrapper);
+        currentGroupContainer.appendChild(wrapperDiv);
         break;
 
-      case 'text-array':
-        label.innerHTML = def.displayName + '<br />(Separated by new lines, not case sensitive)';
+      // ─── Text-Array ─────────────────────────────────────────────────────────────
+      case "text-array":
+        // Adjust label to mention newline separation
+        labelEl.innerHTML = def.displayName + '<br />(Separated by new lines, not case sensitive)';
 
-        input = document.createElement('textarea');
-        input.classList.add('ftl-ext-input');
-        input.value = SETTINGS[def.key].join('\n');
-        input.rows = 5;
-        input.oninput = () => updateSetting(def.key, input.value.split('\n').map(v => v.trim()).filter(Boolean));
+        inputEl = createEl("textarea", ["ftl-ext-input"]);
+        inputEl.rows = 5;
+        // Pre-populate from SETTINGS[def.key] (an array → join by newline)
+        inputEl.value = SETTINGS[def.key].join("\n");
+        inputEl.addEventListener("input", () => {
+          const lines = inputEl.value
+            .split("\n")
+            .map(v => v.trim())
+            .filter(Boolean);
+          updateSetting(def.key, lines);
+        });
 
-        wrapper.classList.add('ftl-ext-setting-wrapper');
-
-        wrapper.appendChild(input);
-        wrapper.appendChild(label);
-        currentGroupContainer.appendChild(wrapper);
+        wrapperDiv.classList.add("ftl-ext-setting-wrapper");
+        wrapperDiv.appendChild(inputEl);
+        wrapperDiv.appendChild(labelEl);
+        currentGroupContainer.appendChild(wrapperDiv);
         break;
     }
-  });
-  
-  // If there's a crafting container, insert the crafting search
+  }); // end of settingDefinitions.forEach
+
+
+  // 10) After all fields exist, insert “special” sections if needed:
+
+  // ─── Crafting Search ───────────────────────────────────────────────────────────
   if (craftingGroupContainer) {
-	const searchWrapper = document.createElement("div");
-	searchWrapper.classList.add('ftl-ext-craft-search-wrapper');
+    const searchWrapper = createEl("div", ["ftl-ext-craft-search-wrapper"]);
+    const searchInput = createInput("text", ["ftl-ext-crafting-search-input"], {
+      placeholder: "Crafting search..."
+    });
+    const recipesContainer = createEl("div", []);
+    recipesContainer.className = "ftl-ext-recipes-container";
 
-	const searchInput = document.createElement("input");
-	searchInput.type = "text";
-	searchInput.placeholder = "Crafting search...";
-	searchInput.classList.add('ftl-ext-crafting-search-input');
+    searchInput.addEventListener("input", e => {
+      const query = e.target.value.trim().toLowerCase();
+      recipesContainer.innerHTML = "";
+      if (!query) return;
 
-	const recipesContainer = document.createElement("div");
-	recipesContainer.className = "ftl-ext-recipes-container";
+      const matched = (CRAFTING_RECIPES || []).filter(recipe =>
+        recipe.ingredients.some(ing => ing.toLowerCase().includes(query)) ||
+        recipe.result.toLowerCase().includes(query)
+      );
+      const table = createRecipeTable(matched, query);
+      recipesContainer.appendChild(table);
+    });
 
-	searchInput.oninput = (e) => {
-	  const query = e.target.value.trim().toLowerCase();
-	  recipesContainer.innerHTML = '';
-	  if (!query) return;
-
-	  const matched = (CRAFTING_RECIPES || []).filter(recipe =>
-		recipe.ingredients.some(ing => ing.toLowerCase().includes(query)) ||
-		recipe.result.toLowerCase().includes(query)
-	  );
-
-	  const table = createRecipeTable(matched, query);
-	  recipesContainer.appendChild(table);
-	};
-
-	searchWrapper.appendChild(searchInput);
-	searchWrapper.appendChild(recipesContainer);
-	craftingGroupContainer.appendChild(searchWrapper);
+    searchWrapper.appendChild(searchInput);
+    searchWrapper.appendChild(recipesContainer);
+    craftingGroupContainer.appendChild(searchWrapper);
   }
-  
-  // If there's a staff message container, insert staff message log
+
+  // ─── Staff Messages Log ─────────────────────────────────────────────────────────
   if (staffMessageGroupContainer) {
-	const staffMessagesWrapper = document.createElement("div");
-	staffMessagesWrapper.classList.add('ftl-ext-staff-messages-wrapper');
-	
-	// Get staff messages from local storage and sort asc by timestamp
-	const staffMessages = loadStaffMessages();
-	staffMessages.sort((a, b) => b.timestamp - a.timestamp);
-	if (staffMessages) {
-	  staffMessages.forEach(message => {
-		const staffMessageWrapper = document.createElement("div");
-		staffMessageWrapper.classList.add('ftl-ext-staff-message-wrapper');
-		  
-		const staffMessageContainer = document.createElement("div");
-		staffMessageContainer.classList.add('ftl-ext-staff-message-container');
-		staffMessageContainer.innerHTML = message.html;
-		
-		staffMessageWrapper.appendChild(staffMessageContainer);
-		staffMessagesWrapper.appendChild(staffMessageWrapper);
-	  });
-	  
-	  const loopMessages = getAllObjectsFromClassNamePrefix('chat-message-default_chat-message-default', staffMessagesWrapper);
-	  if (loopMessages) {
-		loopMessages.forEach(message => {
-		  // Un-hide message that were hidden by either Anti-Spam or Filter at time of saving
-		  message.style.display = '';
-		});
-	  }
-	}
-	staffMessageGroupContainer.appendChild(staffMessagesWrapper);
+    const staffWrapper = createEl("div", ["ftl-ext-staff-messages-wrapper"]);
+    const staffMessages = loadStaffMessages();
+    staffMessages.sort((a, b) => b.timestamp - a.timestamp);
+
+    staffMessages.forEach(msg => {
+      const msgOuter = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+      const msgInner = createEl("div", ["ftl-ext-staff-message-container"]);
+      msgInner.innerHTML = msg.html;
+      msgOuter.appendChild(msgInner);
+      staffWrapper.appendChild(msgOuter);
+    });
+
+    // Un-hide any nested chat‐message elements:
+    const nested = staffWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
+    nested.forEach(m => {
+      m.style.display = "";
+    });
+
+    staffMessageGroupContainer.appendChild(staffWrapper);
   }
-  
-  // If there's aa admin message container, insert admin message log
+
+  // ─── Admin Messages Log ─────────────────────────────────────────────────────────
   if (adminMessageGroupContainer) {
-	const adminMessagesWrapper = document.createElement("div");
-	adminMessagesWrapper.classList.add('ftl-ext-admin-messages-wrapper');
-	
-	// Get admin messages from local storage and sort asc by timestamp
-	const adminMessages = loadAdminMessages();
-	adminMessages.sort((a, b) => b.timestamp - a.timestamp);
-	if (adminMessages) {
-	  adminMessages.forEach(message => {
-		const adminMessageWrapper = document.createElement("div");
-		adminMessageWrapper.classList.add("ftl-ext-admin-message-wrapper");
-		  
-		const adminMessageContainer = document.createElement("div");
-		adminMessageContainer.classList.add('ftl-ext-admin-message-container');
-		
-		const adminTimestampContainer = document.createElement('div');
-		adminTimestampContainer.innerHTML = formatUnixTimestamp(message.timestamp);
-		adminTimestampContainer.classList.add('ftl-ext-admin-timestamp-container');
-		
-		const adminBodyContainer = document.createElement('div');
-		adminBodyContainer.classList.add('ftl-ext-admin-body-container');
+    const adminWrapper = createEl("div", ["ftl-ext-admin-messages-wrapper"]);
+    const adminMessages = loadAdminMessages();
+    adminMessages.sort((a, b) => b.timestamp - a.timestamp);
 
-		// Title
-		const titleContainer = document.createElement('div');
-		titleContainer.textContent = message.header;
-		titleContainer.classList.add('ftl-ext-admin-title');
+    adminMessages.forEach(msg => {
+      const outer = createEl("div", ["ftl-ext-admin-message-wrapper"]);
+      const inner = createEl("div", ["ftl-ext-admin-message-container"]);
 
-		// Message
-		const messageContainer = document.createElement('div');
-		messageContainer.textContent = message.message;
-		messageContainer.classList.add('ftl-ext-admin-message-container-message-container');
+      const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+      timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
 
-		adminBodyContainer.appendChild(titleContainer);
-		adminBodyContainer.appendChild(messageContainer);
-		
-		adminMessageContainer.appendChild(adminTimestampContainer);
-		adminMessageContainer.appendChild(adminBodyContainer);
-		
-		adminMessageWrapper.appendChild(adminMessageContainer);
-		adminMessagesWrapper.appendChild(adminMessageWrapper);
-	  });
-	}
-	adminMessageGroupContainer.appendChild(adminMessagesWrapper);
+      const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+
+      const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
+      titleDiv.textContent = msg.header;
+
+      const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
+      messageDiv.textContent = msg.message;
+
+      bodyWrapper.appendChild(titleDiv);
+      bodyWrapper.appendChild(messageDiv);
+      inner.appendChild(timestampDiv);
+      inner.appendChild(bodyWrapper);
+      outer.appendChild(inner);
+      adminWrapper.appendChild(outer);
+    });
+
+    adminMessageGroupContainer.appendChild(adminWrapper);
   }
 
-  // Show the first group by default
-  const firstGroup = container.querySelector(".ftl-ext-settings-group");
-  if (firstGroup) firstGroup.style.display = "block";
-  
-  // Make the first button 'active' class for styling
-  const firstButton = tabControls.querySelector(".ftl-ext-settings-tab-button");
-  if (firstButton) {
-    firstButton.classList.add("ftl-ext-settings-tab-button-active");
+  // 11) Show the first group by default
+  const firstGroupDiv = outerContainer.querySelector(".ftl-ext-settings-group");
+  if (firstGroupDiv) {
+    firstGroupDiv.style.display = "block";
+  }
+  // Activate the first main tab button
+  const firstMainTabBtn = mainTabBar.querySelector(".ftl-ext-settings-tab-button");
+  if (firstMainTabBtn) {
+    firstMainTabBtn.classList.add("ftl-ext-settings-tab-button-active");
   }
 
-  modal.appendChild(container);
+  // 12) Finally, append our entire `outerContainer` into the modal
+  modal.appendChild(outerContainer);
 
-  // Tip section
-  const tipSection = document.createElement("div");
-  tipSection.classList.add("ftl-ext-tip-section");
-
+  // 13) Build the “Tip” section at the very bottom
+  const tipSection = createEl("div", ["ftl-ext-tip-section"]);
   const tipText = document.createElement("span");
   tipText.textContent = "Like this extension? ";
-
-  const tipLink = document.createElement("span");
+  const tipLink = createEl("span", ["ftl-ext-tip-link"]);
   tipLink.textContent = "TIP";
-  tipLink.classList.add("ftl-ext-tip-link");
-  
-  tipLink.onclick = (e) => {
+  tipLink.addEventListener("click", e => {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent("modalclose"));
-
     setTimeout(() => {
       const tipData = {
         id: "3bd89a72-5aa2-4ad8-b461-71516bd6b4d5",
@@ -366,63 +501,77 @@ function injectPluginSettingsIntoModal() {
         endorsement: "91",
         integrations: []
       };
-
       document.dispatchEvent(new CustomEvent("modalopen", {
-        detail: JSON.stringify({
-          modal: "Tip",
-          data: tipData
-        })
+        detail: JSON.stringify({ modal: "Tip", data: tipData })
       }));
     }, 100);
-  };
-
+  });
   tipSection.appendChild(tipText);
   tipSection.appendChild(tipLink);
   modal.appendChild(tipSection);
 }
 
+
+// ============================
+//  CREATE “FTL EXTENDED” BUTTON
+// ============================
+
+/**
+ * Builds and injects the “FTL Extended” button into the user‐dropdown.
+ * When clicked, it opens the Tip modal, waits 100ms, then calls
+ * injectPluginSettingsIntoModal() and observes for any late‐loading inputs.
+ */
 function createCustomButton() {
   const iconClass = getClassNameFromPrefix("icon_icon");
-  const pluginBtn = document.createElement("button");
-  pluginBtn.classList.add('ftl-ext-settings-button');
+  const pluginBtn = createEl("button", ["ftl-ext-settings-button"]);
+  pluginBtn.dataset.pluginButton = "true";
 
+  // Insert SVG + text
   pluginBtn.innerHTML = `
     <span>
       <div class="${iconClass}">${iconSVG}</div>
     </span>
     FTL Extended
   `;
-  pluginBtn.dataset.pluginButton = "true";
 
-  pluginBtn.onclick = (event) => {
-	const userDropdown = getObjectFromClassNamePrefix("top-bar-user_show");
-	if (userDropdown) userDropdown.classList.remove(getClassNameFromPrefix("top-bar-user_show"));
-	
-	document.dispatchEvent(new CustomEvent("modalopen", {
-	  detail: JSON.stringify({
-		modal: "Tip",
-		data: []
-	  })
-	}));
-	
-	setTimeout(() => {
-		// wait 100ms for the modal to actually appear
-		const object = document.getElementById('modal');
-		if (!object) return;
-		
-		injectPluginSettingsIntoModal(object);
-		const observer = observeObjectForTarget(object, 'input_input-wrapper', injectPluginSettingsIntoModal, false);
-	}, 100);
-  };
-  
+  pluginBtn.addEventListener("click", () => {
+    // Close dropdown if open
+    const openDropdown = getObjectFromClassNamePrefix("top-bar-user_show");
+    if (openDropdown) {
+      openDropdown.classList.remove(getClassNameFromPrefix("top-bar-user_show"));
+    }
+
+    // Open a bare “Tip” modal
+    document.dispatchEvent(new CustomEvent("modalopen", {
+      detail: JSON.stringify({ modal: "Tip", data: [] })
+    }));
+
+    // After 100ms, inject our settings UI
+    setTimeout(() => {
+      const modalElem = document.getElementById("modal");
+      if (!modalElem) return;
+      injectPluginSettingsIntoModal();
+      // Watch for any dynamically added <div class="input_input-wrapper"> inside the modal
+      observeObjectForTarget(modalElem, "input_input-wrapper", injectPluginSettingsIntoModal, false);
+    }, 100);
+  });
+
+  // Insert before “Billing” in the user dropdown, or append at end
   const dropdown = getObjectFromClassNamePrefix("top-bar-user_dropdown");
-  
+  if (!dropdown) return;
   const billingBtn = Array.from(dropdown.querySelectorAll("button"))
     .find(btn => btn.textContent.trim() === "Billing");
-  
   if (billingBtn) {
     dropdown.insertBefore(pluginBtn, billingBtn);
   } else {
     dropdown.appendChild(pluginBtn);
   }
 }
+
+
+// ============================
+//  INITIALIZE
+// ============================
+
+// As soon as this script loads, insert our custom button:
+createCustomButton();
