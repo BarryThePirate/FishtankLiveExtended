@@ -120,7 +120,8 @@
   border: 1px solid #505050;
   background-color: #101010;
   text-align: center;
-  padding: 20px;
+  padding-top: 20px;
+  padding-bottom: 20px;
   max-height: 36vh;
   width: 700px;
   overflow-y: auto;
@@ -151,6 +152,16 @@
   font-size: 14px !important;
 }
 
+.ftl-ext-admin-username-container {
+  padding-top: 10px;
+}
+
+.ftl-ext-clickable-username {
+  color: #F8EC94;
+  font-size: 14px !important;
+  cursor: pointer;
+}
+
 .ftl-ext-admin-body-container {
   width: 80%;
   display: flex;
@@ -169,6 +180,12 @@
   font-weight: bold;
   margin-bottom: 6px;
   color: #F8EC94;
+}
+
+.ftl-ext-admin-room {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #5ff;
 }
 
 .ftl-ext-craft-search-wrapper {

@@ -52,7 +52,7 @@ function logAdminMessage(id, header, message, type) {
   
   if (!SETTINGS.logAdminMessagesLevelUpsMissionsMedals) {
 	// Don't log level up messages
-    if (header && header.toLowerCase().includes('level up')) return;
+    if (header && header.includes('level up')) return;
 	
 	// Don't log mission completed messages
     if (header && header.includes('mission complete')) return;
@@ -198,6 +198,7 @@ function logPing(message) {
   // Check the message contains mentions
   if (!getClassNameFromObjectWithPrefix('chat-message-default_mention', message, false)) return;
   
+  // Check the message is mentioning this user specifically
   let mentioned = false;
   const chatMentions = getAllObjectsFromClassNamePrefix('chat-message-default_mention', message);
   chatMentions.forEach(chatMention => {

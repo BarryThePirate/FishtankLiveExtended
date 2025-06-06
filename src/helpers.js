@@ -158,3 +158,87 @@ function formatUnixTimestamp(timestamp) {
 
   return `${hours}:${minutes}:${seconds} ${year}-${month}-${day}`;
 }
+
+function getUsernameFromMessage(message) {
+  const usernameContainer = getObjectFromClassNamePrefix('chat-message-default_user', message);
+  if (!usernameContainer) return;
+  
+  const username = Array.from(usernameContainer.childNodes)
+	.filter(node => node.nodeType === Node.TEXT_NODE)
+	.map(node => node.textContent.trim())
+	.join("");
+	
+  if (!username) return;
+  return username;
+}
+
+
+function makeUsernameClickable(message) {
+  const usernameContainer = getObjectFromClassNamePrefix('chat-message-default_user', message);
+  if (!usernameContainer) return;
+  
+  const username = getUsernameFromMessage(message);
+  if (!username) return;
+  
+  usernameContainer.addEventListener("click", () => {
+    usernameClicked(username);
+  });
+}
+
+/**
+ * CHATGPT SLOP BUT IT SEEMS TO DO THE JOB
+ * ---------------------------------------
+ * Focuses the chat input and simulates typing “@username ” so Slate treats it like manual input.
+ * @param {string} username  – the username to mention
+ */
+function usernameClicked(username) {
+  const chatInput = document.getElementById("chat-input");
+  if (!chatInput || !username) return;
+
+  // 1) Focus the editor and collapse the caret to the end
+  chatInput.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(chatInput);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  // 2) After Slate has processed focus/selection, simulate typing
+  setTimeout(() => {
+    // Helper to dispatch keydown→beforeinput→input→keyup for a single character
+    function dispatchChar(editorEl, char) {
+      const charCode = char.charCodeAt(0);
+      const isLetter = /[a-zA-Z]/.test(char);
+      const code = isLetter ? "Key" + char.toUpperCase() : "";
+      const init = {
+        key: char,
+        code,
+        charCode,
+        keyCode: charCode,
+        which: charCode,
+        bubbles: true,
+        cancelable: true
+      };
+      editorEl.dispatchEvent(new KeyboardEvent("keydown", init));
+      editorEl.dispatchEvent(new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: char,
+        inputType: "insertText"
+      }));
+      editorEl.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        cancelable: true,
+        data: char,
+        inputType: "insertText"
+      }));
+      editorEl.dispatchEvent(new KeyboardEvent("keyup", init));
+    }
+
+    const textToType = "@" + username + " ";
+    for (const ch of textToType) {
+      dispatchChar(chatInput, ch);
+    }
+  }, 0);
+}

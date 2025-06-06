@@ -426,10 +426,11 @@ function injectPluginSettingsIntoModal() {
       staffWrapper.appendChild(msgOuter);
     });
 
-    // Un-hide any nested chat‐message elements:
+    // Un-hide any nested chat‐message elements and make username clickable:
     const nested = staffWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
     nested.forEach(m => {
       m.style.display = "";
+	  makeUsernameClickable(m);
     });
 
     staffMessageGroupContainer.appendChild(staffWrapper);
@@ -485,6 +486,7 @@ function injectPluginSettingsIntoModal() {
     const nested = pingsWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
     nested.forEach(m => {
       m.style.display = "";
+	  makeUsernameClickable(m);
     });
 
     pingsGroupContainer.appendChild(pingsWrapper);
@@ -502,22 +504,29 @@ function injectPluginSettingsIntoModal() {
 
       const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
       timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
-	  
-	  //const fromDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
-     // fromDiv.innerHTML = msg.from;
 
       const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
 
-      const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
+      const titleDiv = createEl("div", ["ftl-ext-admin-room"]);
       titleDiv.textContent = msg.room;
 
       const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
       messageDiv.textContent = msg.message;
-
+	  
+	  const fromDiv = createEl("div", ["ftl-ext-admin-username-container"]);
+	  const fromUsernameDiv = createEl("span", ["ftl-ext-clickable-username"]);
+	  msg.from = typeof msg.from === 'string' ? msg.from.trim() : null;
+      fromUsernameDiv.innerHTML = msg.from ? '@'+msg.from : '';
+	  fromUsernameDiv.addEventListener("click", () => {
+        usernameClicked(msg.from);
+      });
+	  
+	  fromDiv.appendChild(fromUsernameDiv);
+	  
       bodyWrapper.appendChild(titleDiv);
       bodyWrapper.appendChild(messageDiv);
+	  bodyWrapper.appendChild(fromDiv);
       inner.appendChild(timestampDiv);
-	  //inner.appendChild(fromDiv);
       inner.appendChild(bodyWrapper);
       outer.appendChild(inner);
       ttsWrapper.appendChild(outer);
