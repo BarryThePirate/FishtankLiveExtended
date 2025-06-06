@@ -23,7 +23,7 @@ Toggle what you want to be hidden in the chat. This feature only hides messages.
  - Automatically displays known recipes when crafting with an item
 
 ## Logging
- - Logs the system messages that appear at the bottom of the screen when an admin manually sends a message or when the system automatically displays one along with many settings to exclude many of the automatic system message types
+ - Logs the system messages that appear at the bottom of the screen when an admin manually sends a message or when the system automatically displays one along with many settings to choose what system message get logged
  - Logs chat message from staff members that have the staff message styling and the staff picture as their profile picture
  - Logs each ping you recieve
  - Logs TTS sent by other users
