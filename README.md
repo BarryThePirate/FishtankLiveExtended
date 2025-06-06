@@ -22,14 +22,11 @@ Toggle what you want to be hidden in the chat. This feature only hides messages.
  - The 'Crafting' section on the FTL Extended Settings screen has a search box for seeing recipes
  - Automatically displays known recipes when crafting with an item
 
-## Admin Messages
- - Logs the system messages that appear at the bottom of the screen when an admin manually sends a message or when the system automatically displays one
- - Logs are seen under FTL Extended Settings
- - Settings to exclude many of the automatic system message types
-
-## Staff Messages
+## Logging
+ - Logs the system messages that appear at the bottom of the screen when an admin manually sends a message or when the system automatically displays one along with many settings to exclude many of the automatic system message types
  - Logs chat message from staff members that have the staff message styling and the staff picture as their profile picture
- - Logs are seen under FTL Extended Settings
+ - Logs each ping you recieve
+ - Logs TTS sent by other users
 
 ## Clickable Zones
 Untested and experimental.
