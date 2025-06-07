@@ -1,4 +1,7 @@
-// Globals
+/**
+  * Globals
+  */
+const DEBUGGING = false;
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
@@ -11,7 +14,104 @@ let CRAFTING_RECIPES;
 let SETTINGS;
 let CLASSES = {};
 const OBJECT_OBSERVER_MAP = new Map();
-const DEBUGGING = false;
+/**
+  * SVGs
+  */
+// Garbage Can
+const SVG_GARBAGE_CAN = `
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+  <!-- Lid -->
+  <rect x="9" y="0" width="6" height="2"></rect>
+  <rect x="7" y="2" width="2" height="2"></rect>
+  <rect x="15" y="2" width="2" height="2"></rect>
+  <rect x="2" y="4" width="20" height="2"></rect>
+  
+  <!-- Can -->
+  <rect x="4" y="6" width="2" height="22"></rect>
+  <rect x="18" y="6" width="2" height="22"></rect>
+  <rect x="4" y="22" width="14" height="2"></rect>
+  <rect x="9" y="8" width="1" height="12"></rect>
+  <rect x="14" y="8" width="1" height="12"></rect>
+</svg>
+`;
+
+// Down arrow
+const SVG_DOWN_ARROW = `
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+  <rect x="11" y="22" width="2" height="2"></rect>
+  <rect x="9" y="20" width="2" height="2"></rect>
+  <rect x="7" y="18" width="2" height="2"></rect>
+  <rect x="13" y="20" width="2" height="2"></rect>
+  <rect x="15" y="18" width="2" height="2"></rect>
+  
+  <rect x="11" y="16" width="2" height="2"></rect>
+  <rect x="11" y="12" width="2" height="2"></rect>
+  <rect x="11" y="8" width="2" height="2"></rect>
+  <rect x="11" y="4" width="2" height="2"></rect>
+  <rect x="11" y="0" width="2" height="2"></rect>
+</svg>
+`;
+
+// Up arrow
+const SVG_UP_ARROW = `
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+  <rect x="11" y="0" width="2" height="2"></rect>
+  <rect x="9" y="2" width="2" height="2"></rect>
+  <rect x="7" y="4" width="2" height="2"></rect>
+  <rect x="13" y="2" width="2" height="2"></rect>
+  <rect x="15" y="4" width="2" height="2"></rect>
+  
+  <rect x="11" y="6" width="2" height="2"></rect>
+  <rect x="11" y="10" width="2" height="2"></rect>
+  <rect x="11" y="14" width="2" height="2"></rect>
+  <rect x="11" y="18" width="2" height="2"></rect>
+  <rect x="11" y="22" width="2" height="2"></rect>
+</svg>
+`;
+
+// Skull and crossbones
+const SVG_SKULL_AND_CROSSBONES = `
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+  <!-- Skull -->
+  <rect x="7" y="6" width="10" height="2"></rect>
+  <rect x="6" y="8" width="12" height="2"></rect>
+  <rect x="6" y="10" width="2" height="2"></rect>
+  <rect x="11" y="10" width="2" height="2"></rect>
+  <rect x="16" y="10" width="2" height="2"></rect>
+  <rect x="13" y="12" width="3" height="2"></rect>
+  <rect x="8" y="12" width="3" height="2"></rect>
+  <rect x="9" y="14" width="6" height="1"></rect>
+  <rect x="10" y="17" width="4" height="1"></rect>
+  <rect x="11" y="15" width="1" height="1"></rect>
+  <rect x="13" y="15" width="1" height="1"></rect>
+  <rect x="12" y="16" width="1" height="1"></rect>
+  <rect x="10" y="16" width="1" height="1"></rect>
+  
+  <!-- Crossbones -->
+  
+  <!-- Top Left -->
+  <rect x="2" y="0" width="2" height="2"></rect>
+  <rect x="0" y="2" width="4" height="2"></rect>
+  <rect x="4" y="4" width="2" height="2"></rect>
+  
+  <!-- Top Right -->
+  <rect x="20" y="0" width="2" height="2"></rect>
+  <rect x="20" y="2" width="4" height="2"></rect>
+  <rect x="18" y="4" width="2" height="2"></rect>
+  
+  <!-- Bottom Left -->
+  <rect x="0" y="20" width="4" height="2"></rect>
+  <rect x="2" y="22" width="2" height="2"></rect>
+  <rect x="4" y="18" width="2" height="2"></rect>
+  <rect x="6" y="16" width="2" height="2"></rect>
+  
+  <!-- Bottom Right -->
+  <rect x="20" y="20" width="4" height="2"></rect>
+  <rect x="20" y="22" width="2" height="2"></rect>
+  <rect x="18" y="18" width="2" height="2"></rect>
+  <rect x="16" y="16" width="2" height="2"></rect>
+</svg>
+`;
 
 const settingDefinitions = [
  /**

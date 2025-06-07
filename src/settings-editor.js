@@ -1,52 +1,4 @@
 // =======================
-//  CONSTANTS
-// =======================
-
-const iconSVG = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
-  <!-- Skull -->
-  <rect x="7" y="6" width="10" height="2"></rect>
-  <rect x="6" y="8" width="12" height="2"></rect>
-  <rect x="6" y="10" width="2" height="2"></rect>
-  <rect x="11" y="10" width="2" height="2"></rect>
-  <rect x="16" y="10" width="2" height="2"></rect>
-  <rect x="13" y="12" width="3" height="2"></rect>
-  <rect x="8" y="12" width="3" height="2"></rect>
-  <rect x="9" y="14" width="6" height="1"></rect>
-  <rect x="10" y="17" width="4" height="1"></rect>
-  <rect x="11" y="15" width="1" height="1"></rect>
-  <rect x="13" y="15" width="1" height="1"></rect>
-  <rect x="12" y="16" width="1" height="1"></rect>
-  <rect x="10" y="16" width="1" height="1"></rect>
-  
-  <!-- Crossbones -->
-  
-  <!-- Top Left -->
-  <rect x="2" y="0" width="2" height="2"></rect>
-  <rect x="0" y="2" width="4" height="2"></rect>
-  <rect x="4" y="4" width="2" height="2"></rect>
-  
-  <!-- Top Right -->
-  <rect x="20" y="0" width="2" height="2"></rect>
-  <rect x="20" y="2" width="4" height="2"></rect>
-  <rect x="18" y="4" width="2" height="2"></rect>
-  
-  <!-- Bottom Left -->
-  <rect x="0" y="20" width="4" height="2"></rect>
-  <rect x="2" y="22" width="2" height="2"></rect>
-  <rect x="4" y="18" width="2" height="2"></rect>
-  <rect x="6" y="16" width="2" height="2"></rect>
-  
-  <!-- Bottom Right -->
-  <rect x="20" y="20" width="4" height="2"></rect>
-  <rect x="20" y="22" width="2" height="2"></rect>
-  <rect x="18" y="18" width="2" height="2"></rect>
-  <rect x="16" y="16" width="2" height="2"></rect>
-</svg>
-`;
-
-
-// =======================
 //  ELEMENT-CREATION HELPERS
 // =======================
 
@@ -412,128 +364,133 @@ function injectPluginSettingsIntoModal() {
     craftingGroupContainer.appendChild(searchWrapper);
   }
 
-  // ─── Staff Messages Log ─────────────────────────────────────────────────────────
-  if (staffMessageGroupContainer) {
-    const staffWrapper = createEl("div", ["ftl-ext-staff-messages-wrapper"]);
-    const staffMessages = loadStaffMessages();
-    staffMessages.sort((a, b) => b.timestamp - a.timestamp);
-
-    staffMessages.forEach(msg => {
-      const msgOuter = createEl("div", ["ftl-ext-staff-message-wrapper"]);
-      const msgInner = createEl("div", ["ftl-ext-staff-message-container"]);
-      msgInner.innerHTML = msg.html;
-      msgOuter.appendChild(msgInner);
-      staffWrapper.appendChild(msgOuter);
-    });
-
-    // Un-hide any nested chat‐message elements and make username clickable:
-    const nested = staffWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
-    nested.forEach(m => {
-      m.style.display = "";
-	  makeUsernameClickable(m);
-    });
-
-    staffMessageGroupContainer.appendChild(staffWrapper);
-  }
-
-  // ─── Admin Messages Log ─────────────────────────────────────────────────────────
-  if (adminMessageGroupContainer) {
-    const adminWrapper = createEl("div", ["ftl-ext-admin-messages-wrapper"]);
-    const adminMessages = loadAdminMessages();
-    adminMessages.sort((a, b) => b.timestamp - a.timestamp);
-
-    adminMessages.forEach(msg => {
-      const outer = createEl("div", ["ftl-ext-admin-message-wrapper"]);
-      const inner = createEl("div", ["ftl-ext-admin-message-container"]);
-
-      const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
-      timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
-
-      const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
-
-      const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
-      titleDiv.textContent = msg.header?.toUpperCase();
-
-      const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
-      messageDiv.textContent = msg.message?.toUpperCase();
-
-      bodyWrapper.appendChild(titleDiv);
-      bodyWrapper.appendChild(messageDiv);
-      inner.appendChild(timestampDiv);
-      inner.appendChild(bodyWrapper);
-      outer.appendChild(inner);
-      adminWrapper.appendChild(outer);
-    });
-
-    adminMessageGroupContainer.appendChild(adminWrapper);
-  }
-  
-  // ─── Pings Log ─────────────────────────────────────────────────────────
-  if (staffMessageGroupContainer) {
-    const pingsWrapper = createEl("div", ["ftl-ext-staff-messages-wrapper"]);
-    const pings = loadPings();
-    pings.sort((a, b) => b.timestamp - a.timestamp);
-
-    pings.forEach(msg => {
-      const msgOuter = createEl("div", ["ftl-ext-staff-message-wrapper"]);
-      const msgInner = createEl("div", ["ftl-ext-staff-message-container"]);
-      msgInner.innerHTML = msg.html;
-      msgOuter.appendChild(msgInner);
-      pingsWrapper.appendChild(msgOuter);
-    });
-
-    // Un-hide any nested chat‐message elements:
-    const nested = pingsWrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]');
-    nested.forEach(m => {
-      m.style.display = "";
-	  makeUsernameClickable(m);
-    });
-
-    pingsGroupContainer.appendChild(pingsWrapper);
-  }
-  
-  // ─── TTS Log ─────────────────────────────────────────────────────────
-  if (ttsGroupContainer) {
-    const ttsWrapper = createEl("div", ["ftl-ext-admin-messages-wrapper"]);
-    const tts = loadTts();
-    tts.sort((a, b) => b.timestamp - a.timestamp);
-
-    tts.forEach(msg => {
-      const outer = createEl("div", ["ftl-ext-admin-message-wrapper"]);
-      const inner = createEl("div", ["ftl-ext-admin-message-container"]);
-
-      const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
-      timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
-
-      const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
-
-      const titleDiv = createEl("div", ["ftl-ext-admin-room"]);
-      titleDiv.textContent = msg.room;
-
-      const messageDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
-      messageDiv.textContent = msg.message;
-	  
-	  const fromDiv = createEl("div", ["ftl-ext-admin-username-container"]);
-	  const fromUsernameDiv = createEl("span", ["ftl-ext-clickable-username"]);
-	  msg.from = typeof msg.from === 'string' ? msg.from.trim() : null;
-      fromUsernameDiv.innerHTML = msg.from ? '@'+msg.from : '';
-	  fromUsernameDiv.addEventListener("click", () => {
-        usernameClicked(msg.from);
+  // ─── Admin Messages ─────────────────────────────────────────────────
+  setupLogPanel(
+    adminMessageGroupContainer,
+    ADMIN_MESSAGE_LOG_KEY,
+    (container, messages) => {
+      messages.forEach(msg => {
+        // Outer wrapper for each admin message
+        const outer = createEl("div", ["ftl-ext-admin-message-wrapper"]);
+        const inner = createEl("div", ["ftl-ext-admin-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+    
+        // Timestamp
+        const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+        timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
+    
+        // Body (title + message)
+        const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+    
+        const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
+        titleDiv.textContent = typeof msg.header === "string" ? msg.header : "";
+    
+        const messageDiv = createEl(
+          "div",
+          ["ftl-ext-admin-message-container-message-container"]
+        );
+        messageDiv.textContent = typeof msg.message === "string" ? msg.message : "";
+    
+        // Debugging guards
+        if (DEBUGGING && typeof msg.header !== "string") {
+          console.warn("Admin message header not a string:", msg.header);
+        }
+        if (DEBUGGING && typeof msg.message !== "string") {
+          console.warn("Admin message message not a string:", msg.message);
+        }
+    
+        // Assemble DOM
+        bodyWrapper.append(titleDiv, messageDiv);
+        inner.append(timestampDiv, bodyWrapper);
+        outer.appendChild(inner);
+    
+        // Mount into the panel
+        container.appendChild(outer);
       });
+    },
+    ["ftl-ext-admin-messages-wrapper"]
+  );
+  
+  // ─── Staff Messages ─────────────────────────────────────────────────
+  setupLogPanel(
+    staffMessageGroupContainer,
+	STAFF_MESSAGE_LOG_KEY,
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-staff-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+        inner.innerHTML = msg.html;
+        wrapper.appendChild(inner);
+        // Un-hide & make clickable:
+        wrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]').forEach(m => {
+          m.style.display = "";
+          makeUsernameClickable(m);
+        });
+        container.appendChild(wrapper);
+      });
+    },
+    ["ftl-ext-staff-messages-wrapper"]
+  );
+  
+  // ─── Pings ────────────────────────────────────────────────────────────
+  setupLogPanel(
+    pingsGroupContainer,
+	PINGS_LOG_KEY,
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-staff-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+        inner.innerHTML = msg.html;
+        wrapper.appendChild(inner);
+        // Un-hide & click
+        wrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]').forEach(m => {
+          m.style.display = "";
+          makeUsernameClickable(m);
+        });
+        container.appendChild(wrapper);
+      });
+    },
+    ["ftl-ext-staff-messages-wrapper"]
+  );
+  
+  // ─── TTS ──────────────────────────────────────────────────────────────
+  setupLogPanel(
+    ttsGroupContainer,
+	TTS_LOG_KEY,
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-admin-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-admin-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+        const tsDiv   = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+        tsDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
 	  
-	  fromDiv.appendChild(fromUsernameDiv);
+        const roomDiv = createEl("div", ["ftl-ext-admin-room"]);
+        roomDiv.textContent = msg.room || "";
 	  
-      bodyWrapper.appendChild(titleDiv);
-      bodyWrapper.appendChild(messageDiv);
-	  bodyWrapper.appendChild(fromDiv);
-      inner.appendChild(timestampDiv);
-      inner.appendChild(bodyWrapper);
-      outer.appendChild(inner);
-      ttsWrapper.appendChild(outer);
-    });
-
-    ttsGroupContainer.appendChild(ttsWrapper);
-  }
+        const textDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
+        textDiv.textContent = msg.message || "";
+	  
+        const fromSpan = createEl("span", ["ftl-ext-clickable-username"]);
+		msg.from = typeof msg.from === 'string' ? msg.from.trim() : null;
+        fromSpan.textContent = msg.from ? "@" + msg.from : "";
+        fromSpan.addEventListener("click", () => usernameClicked(msg.from));
+	  
+        const body = createEl("div", ["ftl-ext-admin-body-container"]);
+        body.append(roomDiv, textDiv, fromSpan);
+	  
+        inner.append(tsDiv, body);
+        wrapper.appendChild(inner);
+        container.appendChild(wrapper);
+      });
+    },
+    ["ftl-ext-admin-messages-wrapper"]
+  );
 
   // 11) Show the first group by default
   const firstGroupDiv = outerContainer.querySelector(".ftl-ext-settings-group");
@@ -604,6 +561,107 @@ function injectPluginSettingsIntoModal() {
   modal.appendChild(tipSection);
 }
 
+/**
+ * Build a log panel with Sort & Delete buttons and a render callback.
+ *
+ * @param {HTMLElement} mountPoint    – container to insert the panel into
+ * @param {string}      logKey        – localStorage key for this log
+ * @param {Function}    renderFn      – fn(entriesContainer, messagesArray)
+ * @param {string[]}    wrapperClasses – Array of class names for the outer wrapper
+ */
+function setupLogPanel(mountPoint, logKey, renderFn, wrapperClasses = []) {
+  if (!mountPoint) return;
+
+  // 1) Wrapper (preserves your CSS hooks)
+  const wrapper = createEl("div", wrapperClasses);
+
+  // 2) Sort button + state
+  let isAscending = false;
+  const iconClass = "ftl-ext-svg-button";
+  const orderBtn = createEl("button", ["ftl-ext-svg-button"]);
+  const orderIcon = createEl("div", [iconClass]);
+  orderIcon.innerHTML = SVG_DOWN_ARROW;
+  orderBtn.appendChild(orderIcon);
+  orderBtn.addEventListener("click", () => {
+    isAscending = !isAscending;
+    orderIcon.innerHTML = isAscending ? SVG_UP_ARROW : SVG_DOWN_ARROW;
+    renderPanel();
+  });
+
+  // 3) Delete button (with confirmation)
+  const deleteBtn = createEl("button", ["ftl-ext-svg-button"]);
+  deleteBtn.innerHTML = `<span><div class="${iconClass}">${SVG_GARBAGE_CAN}</div></span>`;
+
+  let confirmRow = null;
+
+  deleteBtn.addEventListener("click", () => {
+    if (confirmRow) return;
+
+    // Build confirmation row
+    confirmRow = createEl("div", ["ftl-ext-confirmation-row"]);
+    confirmRow.textContent = "Are you sure? ";
+
+    const yesBtn = createButton("Yes", ["ftl-ext-confirm-yes"], () => {
+      deleteLog(logKey);
+      confirmRow.remove();
+      confirmRow = null;
+    });
+    const noBtn = createButton("No", ["ftl-ext-confirm-no"], () => {
+      confirmRow.remove();
+      confirmRow = null;
+    });
+    confirmRow.append(yesBtn, noBtn);
+
+    // Position it absolutely next to the deleteBtn
+    confirmRow.style.position = "absolute";
+    // Calculate left offset: deleteBtn’s left edge + its width + small gap
+    const left = deleteBtn.offsetLeft + deleteBtn.offsetWidth + 8;
+    confirmRow.style.left = left + "px";
+    confirmRow.style.top = "50%";
+    confirmRow.style.transform = "translateY(-50%)";
+
+    // Insert into the controlsRow (below we’ll create it)
+    controlsRow.appendChild(confirmRow);
+  });
+
+  // 4) Entries container
+  const entriesContainer = createEl("div", []);
+
+  // 5a) Controls row, centered & relative
+  const controlsRow = createEl("div", ["ftl-ext-log-controls"]);
+  controlsRow.style.position = "relative";  // allow absolute children
+  controlsRow.append(orderBtn, deleteBtn);
+  wrapper.append(controlsRow, entriesContainer);
+
+  // 6) Mount
+  mountPoint.appendChild(wrapper);
+
+  // 7) renderPanel implementation
+  function renderPanel() {
+    entriesContainer.innerHTML = "";
+    const messages = loadLog(logKey, isAscending) || [];
+    renderFn(entriesContainer, messages);
+	
+	const now = Date.now();
+    entriesContainer.querySelectorAll("[data-timestamp]").forEach(el => {
+      const ts = Number(el.dataset.timestamp);
+      if (!isNaN(ts) && now - ts < 1000) {
+        el.classList.add("ftl-ext-new-flash");
+      }
+    });
+  }
+
+  // 8) Initial render
+  renderPanel();
+  
+  // 9) Live-update: re-draw whenever saveLog/deleteLog fire our event
+  window.addEventListener("ftl-ext-log-updated", (e) => {
+    if (e.detail.key === logKey) {
+      renderPanel();
+    }
+  });
+}
+
 
 // ============================
 //  CREATE “FTL EXTENDED” BUTTON
@@ -622,7 +680,7 @@ function createCustomButton() {
   // Insert SVG + text
   pluginBtn.innerHTML = `
     <span>
-      <div class="${iconClass}">${iconSVG}</div>
+      <div class="${iconClass}">${SVG_SKULL_AND_CROSSBONES}</div>
     </span>
     FTL Extended
   `;

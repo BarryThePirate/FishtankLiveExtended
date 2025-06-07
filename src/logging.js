@@ -1,86 +1,111 @@
 /**
- * Admin message logging
+ * Logging functions
  */
-function loadAdminMessages() {
-  const saved = localStorage.getItem(ADMIN_MESSAGE_LOG_KEY);
+function loadLog(key, asc = false) {
+  if (DEBUGGING) console.log("Loading log: "+key);
+	
+  const log = localStorage.getItem(key);
 
   try {
-    return saved ? JSON.parse(saved) : [];
+    const parsed = log ? JSON.parse(log) : [];
+    parsed.sort((a, b) => asc 
+	  ? a.timestamp - b.timestamp // ascending
+	  : b.timestamp - a.timestamp // descending
+	);
+	return parsed;
   } catch {
     console.warn("[⚠️] Failed to parse saved admin messages.");
   }
 }
 
-function saveAdminMessages(log) {  
+function saveLog(log, key) {
+  if (DEBUGGING) console.log("Saving log: "+key);
+  
   try {
-    localStorage.setItem(ADMIN_MESSAGE_LOG_KEY, JSON.stringify(log));
+    localStorage.setItem(key, JSON.stringify(log));
+	
+	// Signal to our log viewer that a log has updated
+    window.dispatchEvent(new CustomEvent("ftl-ext-log-updated", { detail: { key } }));
   } catch (e) {
     console.error('[❌] Failed to save admin message log:', e);
   }
 }
 
-function deleteAdminMessages() {
-	try {
-    localStorage.removeItem(ADMIN_MESSAGE_LOG_KEY);
+function deleteLog(key) {
+  if (DEBUGGING) console.log("Deleting log: "+key);
+  
+  try {
+    localStorage.removeItem(key);
+	
+	// Signal to our log viewer that a log has updated
+    window.dispatchEvent(new CustomEvent("ftl-ext-log-updated", { detail: { key } }));
   } catch (e) {
     console.error('[❌] Failed to delete admin message log:', e);
   }
 }
 
+/**
+ * Admin message logging
+ */
 function logAdminMessage(id, header, message, type) {
   if (SETTINGS.disableAdminMessageLogging) return;
+  
+  let lowerCaseHeader = null;
+  let lowerCaseMessage = null;
   
   // Force to string converstion
   if (header) {
 	// If it isn't a string, change it to the innerHTML
-	header = typeof header === 'string' ? header.toLowerCase() : (header?.innerHTML || header);
+	header = typeof header === 'string' ? header : (header?.innerHTML || header);
+	lowerCaseHeader = typeof header === 'string' ? header.toLowerCase() : header;
   }
   
   if (message) {
 	// If it isn't a string, change it to the innerHTML
-	message = typeof message === 'string' ? message.toLowerCase() : (message?.innerHTML || message);
+	message = typeof message === 'string' ? message : (message?.innerHTML || message);
+	lowerCaseMessage = typeof header === 'string' ? header.toLowerCase() : header;
   }
 	
   // Don't log admin messages sent from this plugin
   if (id.startsWith('ftl-ext')) return;
   
   // Don't log season pass reminders
-  if (message && (id == 'season-pass' || message == 'season-pass')) return;
+  if (lowerCaseMessage && (id == 'season-pass' || lowerCaseMessage == 'season-pass')) return;
   
   // Don't log 'Forbidden' error messages
-  if (message && message == 'Forbidden') return;
+  if (lowerCaseMessage && lowerCaseMessage == 'Forbidden') return;
   
   if (!SETTINGS.logAdminMessagesLevelUpsMissionsMedals) {
 	// Don't log level up messages
-    if (header && header.includes('level up')) return;
+    if (lowerCaseHeader && lowerCaseHeader.includes('level up')) return;
 	
 	// Don't log mission completed messages
-    if (header && header.includes('mission complete')) return;
-    if (message && (message.startsWith('mission complete') || message.startsWith('mission accepted'))) return
+    if (lowerCaseHeader && lowerCaseHeader.includes('mission complete')) return;
+    if (lowerCaseMessage && (lowerCaseMessage.startsWith('mission complete') || lowerCaseMessage.startsWith('mission accepted'))) return
 	
 	// Don't log medal earned messages
-    if (header && header.includes('medal earned')) return;
+    if (lowerCaseHeader && lowerCaseHeader.includes('medal earned')) return;
   }
   
   // Don't log items added to inventory messages
   if (!SETTINGS.logAdminMessagesFoundItem 
-    && header
-	&& message
-	&& (header.includes('found an item') || message.includes('added to your inventory'))) return;
+    && lowerCaseHeader
+	&& lowerCaseMessage
+	&& (lowerCaseHeader.includes('found an item') || lowerCaseMessage.includes('added to your inventory'))) return;
   
   // Don't log polls started
-  if (!SETTINGS.logAdminMessagesNewPollStarted && message && message.includes('new poll has started')) return;
+  if (!SETTINGS.logAdminMessagesNewPollStarted && lowerCaseMessage && lowerCaseMessage.includes('new poll has started')) return;
   
   // Don't log error messages
   if (!SETTINGS.logAdminMessagesError && type && type == 'error') return;
   
   // Don't log tips sent/recieved
-  if (!SETTINGS.logAdminMessagesTips && message && (message.startsWith("you spent ₣") || message.startsWith("you received ₣"))) return;
+  if (!SETTINGS.logAdminMessagesTips && lowerCaseMessage && (lowerCaseMessage.startsWith("you spent ₣") || lowerCaseMessage.startsWith("you received ₣"))) return;
   
   // Don't log gifted season passes
-  if (!SETTINGS.logAdminMessagesGiftedSeasonPasses && header && header.includes('gifted') && header.endsWith('season passes!')) return;
+  if (!SETTINGS.logAdminMessagesGiftedSeasonPasses && lowerCaseHeader && lowerCaseHeader.includes('gifted') && lowerCaseHeader.endsWith('season passes!')) return;
   
-  let log = loadAdminMessages();
+  let log = loadLog(ADMIN_MESSAGE_LOG_KEY, true);
   if (!log) return;
   
   log.push({
@@ -99,38 +124,12 @@ function logAdminMessage(id, header, message, type) {
     log = log.slice(-numberOfMessages);
   }
   
-  saveAdminMessages(log);
+  saveLog(log, ADMIN_MESSAGE_LOG_KEY);
 }
 
 /**
  * Staff message logging
  */
-function loadStaffMessages() {
-  const saved = localStorage.getItem(STAFF_MESSAGE_LOG_KEY);
-
-  try {
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    console.warn("[⚠️] Failed to parse saved staff messages.");
-  }
-}
-
-function saveStaffMessages(log) {  
-  try {
-    localStorage.setItem(STAFF_MESSAGE_LOG_KEY, JSON.stringify(log));
-  } catch (e) {
-    console.error('[❌] Failed to save staff message log:', e);
-  }
-}
-
-function deleteStaffMessages() {
-	try {
-    localStorage.removeItem(STAFF_MESSAGE_LOG_KEY);
-  } catch (e) {
-    console.error('[❌] Failed to delete staff message log:', e);
-  }
-}
-
 function logStaffMessage(message) {
   if (SETTINGS.disableStaffMessageLogging) return;
 	
@@ -142,7 +141,7 @@ function logStaffMessage(message) {
   if (!message.querySelector('img[src="https://cdn.fishtank.live/avatars/staff.png"]')
 	  && !message.querySelector('img[src="https://cdn.fishtank.live/avatars/wes.png"]')) return;
   
-  let log = loadStaffMessages();
+  let log = loadLog(STAFF_MESSAGE_LOG_KEY, true);
   if (!log) return;
   log.push({
     html: message.outerHTML,
@@ -158,38 +157,12 @@ function logStaffMessage(message) {
     log = log.slice(-numberOfMessages);
   }
   
-  saveStaffMessages(log);
+  saveLog(log, STAFF_MESSAGE_LOG_KEY);
 }
 
 /**
  * Pings logging
  */
-function loadPings() {
-  const saved = localStorage.getItem(PINGS_LOG_KEY);
-
-  try {
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    console.warn("[⚠️] Failed to parse saved pings.");
-  }
-}
-
-function savePings(log) {  
-  try {
-    localStorage.setItem(PINGS_LOG_KEY, JSON.stringify(log));
-  } catch (e) {
-    console.error('[❌] Failed to save pings log:', e);
-  }
-}
-
-function deletePings() {
-	try {
-    localStorage.removeItem(PINGS_LOG_KEY);
-  } catch (e) {
-    console.error('[❌] Failed to delete pings log:', e);
-  }
-}
-
 function logPing(message) {
   if (SETTINGS.disablePingsLogging) return;
   
@@ -208,7 +181,7 @@ function logPing(message) {
   });
   if (!mentioned) return;
   
-  let log = loadPings();
+  let log = loadLog(PINGS_LOG_KEY, true);
   if (!log) return;
   log.push({
     html: message.outerHTML,
@@ -224,38 +197,12 @@ function logPing(message) {
     log = log.slice(-numberOfMessages);
   }
   
-  savePings(log);
+  saveLog(log, PINGS_LOG_KEY);
 }
 
 /**
  * TTS logging
  */
-function loadTts() {
-  const saved = localStorage.getItem(TTS_LOG_KEY);
-
-  try {
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    console.warn("[⚠️] Failed to parse saved TTS.");
-  }
-}
-
-function saveTts(log) {  
-  try {
-    localStorage.setItem(TTS_LOG_KEY, JSON.stringify(log));
-  } catch (e) {
-    console.error('[❌] Failed to save TTS log:', e);
-  }
-}
-
-function deleteTts() {
-	try {
-    localStorage.removeItem(TTS_LOG_KEY);
-  } catch (e) {
-    console.error('[❌] Failed to delete TTS log:', e);
-  }
-}
-
 function logTts(message) {
   if (SETTINGS.disableTtsLogging) return;
   
@@ -267,7 +214,7 @@ function logTts(message) {
   
   if (!from || !room || !ttsMessage) return;
   
-  let log = loadTts();
+  let log = loadLog(TTS_LOG_KEY, true);
   if (!log) return;
   log.push({
     from: from.innerHTML,
@@ -285,5 +232,5 @@ function logTts(message) {
     log = log.slice(-numberOfMessages);
   }
   
-  saveTts(log);
+  saveLog(log, TTS_LOG_KEY);
 }

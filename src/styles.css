@@ -152,11 +152,8 @@
   font-size: 14px !important;
 }
 
-.ftl-ext-admin-username-container {
-  padding-top: 10px;
-}
-
 .ftl-ext-clickable-username {
+  margin-top: 10px;
   color: #F8EC94;
   font-size: 14px !important;
   cursor: pointer;
@@ -214,4 +211,53 @@
   color: #F8EC94;
   cursor: pointer;
   text-decoration: none;
+}
+
+.ftl-ext-log-controls {
+  display: flex;
+  justify-content: center;
+  gap: 6.0rem;
+  margin-bottom: 0.5rem;
+}
+
+.ftl-ext-svg-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.ftl-ext-svg-button svg {
+  fill: #f8ec94;
+}
+
+/* Float-confirm row: no line-breaks */
+.ftl-ext-confirmation-row {
+  margin-left: 0.25rem;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+/* Style Yes/No inline buttons */
+.ftl-ext-confirm-yes,
+.ftl-ext-confirm-no {
+  background: transparent;
+  border: none;
+  margin-left: 0.25rem;
+  margin-right: 0.25rem;
+  cursor: pointer;
+}
+
+@keyframes flashHighlight {
+  0%   { background-color: #f8ec94; }
+  100% { background-color: transparent; }
+}
+
+/* Apply two half-second fades for a total of ~1s worth of flashing */
+.ftl-ext-new-flash {
+  animation-name: flashHighlight;
+  animation-duration: 0.5s;
+  animation-iteration-count: 2;
+  animation-timing-function: ease-in-out;
 }
