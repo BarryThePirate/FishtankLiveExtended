@@ -249,6 +249,14 @@
   cursor: pointer;
 }
 
+.ftl-ext-log-filter {
+  order: -1;                 /* appear before the sort icon */
+  margin-left: 3.6rem;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  position: absolute;
+}
+
 @keyframes flashHighlight {
   0%   { background-color: #f8ec94; }
   100% { background-color: transparent; }

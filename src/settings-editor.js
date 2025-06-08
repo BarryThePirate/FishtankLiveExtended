@@ -575,11 +575,13 @@ function injectPluginSettingsIntoModal() {
 function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperClasses = []) {
   if (!mountPoint) return;
 
-  // 1) Wrapper (preserves your CSS hooks)
+  // Wrapper (preserves your CSS hooks)
   const wrapper = createEl("div", wrapperClasses);
 
-  // 2) Sort button + state
+  // Sort button + state
   let isAscending = Boolean(SETTINGS[orderSettingKey]);
+  let currentRoom   = "";
+  const allMessages = () => loadLog(logKey, isAscending) || [];
   const iconClass = "ftl-ext-svg-button";
   const orderBtn = createEl("button", ["ftl-ext-svg-button"]);
   const orderIcon = createEl("div", [iconClass]);
@@ -591,8 +593,19 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
     orderIcon.innerHTML = isAscending ? SVG_UP_ARROW : SVG_DOWN_ARROW;
     renderPanel();
   });
+  
+  // If it's the TTS log, event listener for dropdown change
+  let filterSelect = null;
+  if (orderSettingKey === "logTtsOrderAsc") {
+    filterSelect = createEl("select", ["ftl-ext-log-filter", 'select_select__UlP30']);
+    filterSelect.style.left = "0px";
+    filterSelect.addEventListener("change", e => {
+      currentRoom = e.target.value;
+      renderPanel();
+    });
+  }
 
-  // 3) Delete button (with confirmation)
+  // Delete button (with confirmation)
   const deleteBtn = createEl("button", ["ftl-ext-svg-button"]);
   deleteBtn.innerHTML = `<span><div class="${iconClass}">${SVG_GARBAGE_CAN}</div></span>`;
 
@@ -628,22 +641,42 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
     controlsRow.appendChild(confirmRow);
   });
 
-  // 4) Entries container
+  // Entries container
   const entriesContainer = createEl("div", []);
 
-  // 5a) Controls row, centered & relative
+  // Controls row, centered & relative
   const controlsRow = createEl("div", ["ftl-ext-log-controls"]);
   controlsRow.style.position = "relative";  // allow absolute children
   controlsRow.append(orderBtn, deleteBtn);
+  if (filterSelect) controlsRow.appendChild(filterSelect);
   wrapper.append(controlsRow, entriesContainer);
 
-  // 6) Mount
+  // Mount
   mountPoint.appendChild(wrapper);
 
-  // 7) renderPanel implementation
+  // renderPanel implementation
   function renderPanel() {
     entriesContainer.innerHTML = "";
-    const messages = loadLog(logKey, isAscending) || [];
+	
+	// Rebuild the room dropdown each time (keeps it in sync)
+    if (filterSelect) {
+      const rooms = Array.from(
+        new Set(allMessages().map(m => m.room).filter(Boolean))
+      );
+	  rooms.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      filterSelect.innerHTML = `<option value="">All</option>` +
+        rooms.map(r => `
+          <option value="${r}"${r === currentRoom ? " selected" : ""}>
+            ${r}
+          </option>
+        `).join("");
+    }
+	
+	// — load & optionally filter
+    let messages = allMessages();
+    if (currentRoom) {
+      messages = messages.filter(m => m.room === currentRoom);
+    }
     renderFn(entriesContainer, messages);
 	
 	const now = Date.now();
@@ -661,10 +694,10 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
     });
   }
 
-  // 8) Initial render
+  // Initial render
   renderPanel();
   
-  // 9) Live-update: re-draw whenever saveLog/deleteLog fire our event
+  // Live-update: re-draw whenever saveLog/deleteLog fire our event
   window.addEventListener("ftl-ext-log-updated", (e) => {
     if (e.detail.key === logKey) {
       renderPanel();
@@ -683,6 +716,9 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
  * injectPluginSettingsIntoModal() and observes for any late‐loading inputs.
  */
 function createCustomButton() {
+  // Prevent duplicates
+  if (document.querySelector('.ftl-ext-settings-button')) return;
+  
   const iconClass = getClassNameFromPrefix("icon_icon");
   const pluginBtn = createEl("button", ["ftl-ext-settings-button"]);
   pluginBtn.dataset.pluginButton = "true";
