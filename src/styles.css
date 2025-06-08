@@ -300,3 +300,22 @@
   animation-iteration-count: 2;
   animation-timing-function: ease-in-out;
 }
+
+@keyframes ftl-ext-text-pulse {
+  0% {
+    color: #f30e00;
+    text-shadow: 0 0 8px rgba(243, 14, 0, 0.5);
+  }
+  50% {
+    color: #55ffff;
+    text-shadow: 0 0 16px rgba(85, 255, 255, 0.5);
+  }
+  100% {
+    color: #ff00c8;
+    text-shadow: 0 0 8px rgba(255, 0, 200, 0.5);
+  }
+}
+
+.ftl-ext-text-pulser {
+  animation: ftl-ext-text-pulse 5s ease infinite alternate-reverse;
+}

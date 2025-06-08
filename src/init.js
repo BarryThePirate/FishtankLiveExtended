@@ -74,6 +74,7 @@ function chatMessagesMutationObserved(message) {
   logStaffMessage(message);
   logPing(message);
   logTts(message);
+  contributors(message);
 }
 
 function observeChatMessages() {
@@ -182,6 +183,33 @@ mainObserver.observe(document.body, {
   subtree: true,
 });
 
+/**
+ * Apply unique styling to contributors in chat.
+ * Wrap any matching contributor‐username in a pulser <span>.
+ */
+function contributors(message) {
+  // find the <span class="..._user__..."> container
+  const userContainer = getObjectFromClassNamePrefix('chat-message-default_user', message);
+  if (!userContainer) return;
+
+  // grab the raw text node (i.e. skip any <span class="..._clan__..."> inside)
+  const textNode = Array.from(userContainer.childNodes)
+    .find(n => n.nodeType === Node.TEXT_NODE);
+  if (!textNode) return;
+
+  const name = textNode.textContent.trim();
+  // case‐insensitive match against your CONTRIBUTORS list
+  const isContributor = CONTRIBUTORS
+    .some(u => u.toLowerCase() === name.toLowerCase());
+  if (!isContributor) return;
+
+  // wrap it in your pulser span
+  const pulse = document.createElement('span');
+  pulse.className = 'ftl-ext-text-pulser';
+  pulse.textContent = name;
+
+  userContainer.replaceChild(pulse, textNode);
+}
 
 /**
  * Setup event listeners

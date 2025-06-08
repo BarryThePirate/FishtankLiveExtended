@@ -14,6 +14,7 @@ let CRAFTING_RECIPES;
 let SETTINGS;
 let CLASSES = {};
 const OBJECT_OBSERVER_MAP = new Map();
+const CONTRIBUTORS = ["BarryThePirate"];
 /**
   * SVGs
   */
