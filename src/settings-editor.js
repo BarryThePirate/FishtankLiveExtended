@@ -158,10 +158,10 @@ function injectPluginSettingsIntoModal() {
           // Hide all sub-containers
           Object.values(subContainers).forEach(c => c.style.display = "none");
           // Deactivate all sub‐tabs
-          Object.values(subButtons).forEach(b => b.classList.remove("ftl-ext-settings-tab-button-active"));
+          Object.values(subButtons).forEach(b => b.classList.remove("ftl-ext-settings-sub-tab-button-active"));
           // Show & activate the first one
           subContainers[firstSubKey].style.display = "block";
-          subButtons[firstSubKey].classList.add("ftl-ext-settings-tab-button-active");
+          subButtons[firstSubKey].classList.add("ftl-ext-settings-sub-tab-button-active");
         }
       });
       mainTabBar.appendChild(mainTabButton);
@@ -198,11 +198,11 @@ function injectPluginSettingsIntoModal() {
           });
           // Deactivate all sub buttons
           Object.values(subGroupTabButtons[grp]).forEach(b => {
-            b.classList.remove("ftl-ext-settings-tab-button-active");
+            b.classList.remove("ftl-ext-settings-sub-tab-button-active");
           });
           // Show & activate this sub‐container
           subDiv.style.display = "block";
-          subBtn.classList.add("ftl-ext-settings-tab-button-active");
+          subBtn.classList.add("ftl-ext-settings-sub-tab-button-active");
         });
         // Add that button into the group’s subTabBar
         lastCreatedGroupContainer.querySelector(".ftl-ext-sub-tab-controls").appendChild(subBtn);
@@ -493,7 +493,7 @@ function injectPluginSettingsIntoModal() {
         container.appendChild(wrapper);
       });
     },
-    ["ftl-ext-admin-messages-wrapper"]
+    ["ftl-ext-staff-messages-wrapper"]
   );
 
   // 11) Show the first group by default
@@ -597,12 +597,32 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
   // If it's the TTS log, event listener for dropdown change
   let filterSelect = null;
   if (orderSettingKey === "logTtsOrderAsc") {
-    filterSelect = createEl("select", ["ftl-ext-log-filter", 'select_select__UlP30']);
+	const downURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_DOWN_ARROW_MINI.trim());
+	const upURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_UP_ARROW_MINI.trim());
+    filterSelect = createEl("select", ["ftl-ext-log-filter"]);
     filterSelect.style.left = "0px";
     filterSelect.addEventListener("change", e => {
       currentRoom = e.target.value;
       renderPanel();
     });
+	filterSelect.style.setProperty("--ftl-arrow-down", `url("${downURI}")`);
+	filterSelect.style.setProperty("--ftl-arrow-up",   `url("${upURI}")`);
+	
+	// Make the arrows switch correctly
+	let _ftlOpening = false;
+	filterSelect.addEventListener("click", () => {
+	  if (!_ftlOpening) {
+		_ftlOpening = true;
+	  } else {
+		setTimeout(() => {
+		  filterSelect.blur();
+		  _ftlOpening = false;
+		}, 0);
+	  }
+	});
+	filterSelect.addEventListener("blur", () => {
+	  _ftlOpening = false;
+	});
   }
 
   // Delete button (with confirmation)

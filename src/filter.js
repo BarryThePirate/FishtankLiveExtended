@@ -42,6 +42,8 @@ function unfilter(message) {
 }
 
 function resetChatFilter() {
+  if (DEBUGGING) console.log('Resetting chat filter');
+	
   const chat = document.getElementById('chat-messages');
   if (!chat) return;
 

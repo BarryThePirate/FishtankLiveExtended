@@ -4,6 +4,8 @@ function markAsSpam(message) {
 }
 
 function resetAntiSpam() {
+	if (DEBUGGING) console.log('Resetting anti-spam');
+	
 	// Loop through all chat messages
 	const chat = document.getElementById("chat-messages");
 	if (chat) {
@@ -13,6 +15,7 @@ function resetAntiSpam() {
 			message.classList.remove('ftl-ext-spam');
 			applyAntiSpam(message);
 		});
+		resetChatFilter();
 	}
 	
 	// Scroll to the bottom after applying new anti-spam settings to chat

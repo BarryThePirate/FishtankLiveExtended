@@ -1,7 +1,7 @@
 /**
   * Globals
   */
-const DEBUGGING = false;
+let DEBUGGING = false;
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
@@ -68,6 +68,29 @@ const SVG_UP_ARROW = `
   <rect x="11" y="22" width="2" height="2"></rect>
 </svg>
 `;
+
+// ^
+const SVG_UP_ARROW_MINI = `
+<svg viewBox="0 0 8 12" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="12" height="8">
+  <rect x="4" y="0" width="2" height="2"></rect>
+  <rect x="2" y="2" width="2" height="2"></rect>
+  <rect x="0" y="4" width="2" height="2"></rect>
+  <rect x="6" y="2" width="2" height="2"></rect>
+  <rect x="8" y="4" width="2" height="2"></rect>
+</svg>
+`;
+
+// v
+const SVG_DOWN_ARROW_MINI = `
+<svg viewBox="0 0 8 12" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="12" height="8">
+  <rect x="4" y="4" width="2" height="2"></rect>
+  <rect x="2" y="2" width="2" height="2"></rect>
+  <rect x="0" y="0" width="2" height="2"></rect>
+  <rect x="6" y="2" width="2" height="2"></rect>
+  <rect x="8" y="0" width="2" height="2"></rect>
+</svg>
+`;
+
 
 // Skull and crossbones
 const SVG_SKULL_AND_CROSSBONES = `
@@ -231,7 +254,7 @@ const settingDefinitions = [
   {
     key: "autoApplyChatFilters",
     group: "Chat Filters",
-    displayName: "Auto Apply Chat Filters When Viewing Streams (EXPERIMENTAL FEATURE)",
+    displayName: "Auto Apply Chat Filters When Viewing Streams",
     type: "boolean",
     defaultValue: false
   },

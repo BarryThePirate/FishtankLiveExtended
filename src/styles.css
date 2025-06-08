@@ -1,8 +1,8 @@
 .ftl-ext-settings-editor-container {
-  padding: 20px;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /*gap: 10px;*/
 }
   
 .ftl-ext-settings-group-header {
@@ -14,7 +14,7 @@
   
 .ftl-ext-tab-controls {
   display: flex;
-  margin-bottom: 15px;
+  /*margin-bottom: 15px;*/
   align-items: center;
   justify-content: center;
 }
@@ -37,9 +37,14 @@
 
 .ftl-ext-sub-tab-controls {
   display: flex;
-  margin-bottom: 15px;
+  margin-bottom: 2rem;
   align-items: center;
   justify-content: center;
+}
+
+.ftl-ext-settings-sub-tab-button-active {
+  color: #e47327;
+  background-color: #e473271A;
 }
 
 /* Add rounded corners to first and last buttons */
@@ -102,7 +107,7 @@
   border: 1px solid #505050;
   background-color: #101010;
   padding: 0.5rem;
-  max-height: 52vh;
+  height: 52vh;
   width: 700px;
   overflow-y: auto;
 }
@@ -120,9 +125,8 @@
   border: 1px solid #505050;
   background-color: #101010;
   text-align: center;
-  padding-top: 20px;
-  padding-bottom: 20px;
-  max-height: 36vh;
+  padding: 0.5rem;
+  height: 36vh;
   width: 700px;
   overflow-y: auto;
 }
@@ -250,11 +254,38 @@
 }
 
 .ftl-ext-log-filter {
-  order: -1;                 /* appear before the sort icon */
-  margin-left: 3.6rem;
+  margin-left: 5%;
   white-space: nowrap;
-  font-size: 0.9rem;
+  font-size: 1rem;
   position: absolute;
+  
+  min-width: 6rem;
+  padding: 0.25rem 0.5rem;
+  
+  /* border & background */
+  border: 1px solid #505050;
+  background-image: var(--ftl-arrow-down);
+  background-repeat: no-repeat;
+  background-color: #F8EC941A;
+  background-size: 18px 12px;
+  background-position: calc(100% - 0.3em) calc(50% + 2px);
+  padding-right: 1.5em;
+  color: #F8EC94;
+  
+  /* remove native arrow so we can draw our own */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* focus state */
+.ftl-ext-log-filter:focus {
+  background-image: var(--ftl-arrow-up);
+}
+
+.ftl-ext-log-filter option {
+  color: #5ff;
+  background-color: #101010;
 }
 
 @keyframes flashHighlight {
