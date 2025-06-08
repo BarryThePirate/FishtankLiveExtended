@@ -14,6 +14,13 @@ function findAllRecipesByIngredients(ingredients) {
   });
 }
 
+function findAllRecipesByIngredient(ingredient) {
+  if (!ingredient) return [];
+  return CRAFTING_RECIPES.filter(recipe => {
+	return recipe.ingredients.includes(ingredient);
+  });
+}
+
 function createRecipeTable(recipes, query) {
   const table = document.createElement("table");
   table.style.fontFamily = "monospace";
@@ -52,7 +59,7 @@ function createRecipeTable(recipes, query) {
   return table;
 }
 
-function displayCraftingRecipesForItem(modal) {
+function displayCraftingRecipesForCraftingItem(modal) {
   if (!SETTINGS.displayRecipesInCraftModal || !CRAFTING_RECIPES) return;
 
   const modalHeader = getObjectFromClassNamePrefix('modal_header', modal);
@@ -82,6 +89,7 @@ function displayCraftingRecipesForItem(modal) {
   const ingredients = [craftItem1];
   if (craftItem2) ingredients.push(craftItem2);
   const matchingRecipes = findAllRecipesByIngredients(ingredients);
+  if (DEBUGGING) console.log('Matched recipes: ' + matchingRecipes);
 
   if (matchingRecipes.length > 0) {
     const table = createRecipeTable(matchingRecipes, craftItem1.toLowerCase());
@@ -93,6 +101,37 @@ function displayCraftingRecipesForItem(modal) {
     fallback.style.marginBottom	= "10px";
     fallback.style.borderSpacing = "8px 4px";
     recipesContainer.appendChild(fallback);
+  }
+
+  modalHeader.appendChild(recipesContainer);
+}
+
+function displayCraftingRecipesForConsumeItem(modal) {
+  if (!SETTINGS.displayRecipesInConsumeModal || !CRAFTING_RECIPES) return;
+
+  const modalHeader = getObjectFromClassNamePrefix('modal_header', modal);
+  if (!modalHeader) return;
+
+  let consumeItem = getObjectFromClassNamePrefix('queue-item-modal_name', modal);
+  if (!consumeItem) return;
+  
+  consumeItem = consumeItem.textContent?.trim();
+  if (!consumeItem || consumeItem.length === 0) return;
+
+  const existing = modalHeader.querySelector('.ftl-ext-recipes');
+  if (existing) existing.remove();
+
+  const recipesContainer = document.createElement('span');
+  recipesContainer.classList.add('ftl-ext-recipes');
+  recipesContainer.style.display = "flex";
+  recipesContainer.style.justifyContent = "center";
+
+  const matchingRecipes = findAllRecipesByIngredient(consumeItem);
+  if (DEBUGGING) console.log('Matched recipes: ' + matchingRecipes);
+
+  if (matchingRecipes.length > 0) {
+    const table = createRecipeTable(matchingRecipes, consumeItem.toLowerCase());
+    recipesContainer.appendChild(table);
   }
 
   modalHeader.appendChild(recipesContainer);

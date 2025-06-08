@@ -189,10 +189,16 @@ mainObserver.observe(document.body, {
 const modalActions = [
   {
     modal: 'Craft Item',
-	before: displayCraftingRecipesForItem,
-    then: displayCraftingRecipesForItem,
+	before: displayCraftingRecipesForCraftingItem,
+    then: displayCraftingRecipesForCraftingItem,
 	disconnectObserverDuringThen: true
-  }
+  },
+  {
+    modal: 'Use Fishtoy',
+	before: displayCraftingRecipesForConsumeItem,
+    then: displayCraftingRecipesForConsumeItem,
+	disconnectObserverDuringThen: true
+  },
 ];
 
 document.addEventListener("modalopen", (e) => {

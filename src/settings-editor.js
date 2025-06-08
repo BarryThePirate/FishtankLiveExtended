@@ -368,6 +368,7 @@ function injectPluginSettingsIntoModal() {
   setupLogPanel(
     adminMessageGroupContainer,
     ADMIN_MESSAGE_LOG_KEY,
+    "logAdminMessagesOrderAsc",
     (container, messages) => {
       messages.forEach(msg => {
         // Outer wrapper for each admin message
@@ -415,6 +416,7 @@ function injectPluginSettingsIntoModal() {
   setupLogPanel(
     staffMessageGroupContainer,
 	STAFF_MESSAGE_LOG_KEY,
+    "logStaffMessagesOrderAsc",
 	(container, messages) => {
       messages.forEach(msg => {
         const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
@@ -438,6 +440,7 @@ function injectPluginSettingsIntoModal() {
   setupLogPanel(
     pingsGroupContainer,
 	PINGS_LOG_KEY,
+    "logPingsOrderAsc",
 	(container, messages) => {
       messages.forEach(msg => {
         const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
@@ -461,6 +464,7 @@ function injectPluginSettingsIntoModal() {
   setupLogPanel(
     ttsGroupContainer,
 	TTS_LOG_KEY,
+    "logTtsOrderAsc",
 	(container, messages) => {
       messages.forEach(msg => {
         const wrapper = createEl("div", ["ftl-ext-admin-message-wrapper"]);
@@ -562,28 +566,28 @@ function injectPluginSettingsIntoModal() {
 }
 
 /**
- * Build a log panel with Sort & Delete buttons and a render callback.
- *
- * @param {HTMLElement} mountPoint    – container to insert the panel into
- * @param {string}      logKey        – localStorage key for this log
- * @param {Function}    renderFn      – fn(entriesContainer, messagesArray)
- * @param {string[]}    wrapperClasses – Array of class names for the outer wrapper
+ * @param {HTMLElement} mountPoint
+ * @param {string}      logKey
+ * @param {string}      orderSettingKey
+ * @param {Function}    renderFn
+ * @param {string[]}    wrapperClasses
  */
-function setupLogPanel(mountPoint, logKey, renderFn, wrapperClasses = []) {
+function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperClasses = []) {
   if (!mountPoint) return;
 
   // 1) Wrapper (preserves your CSS hooks)
   const wrapper = createEl("div", wrapperClasses);
 
   // 2) Sort button + state
-  let isAscending = false;
+  let isAscending = Boolean(SETTINGS[orderSettingKey]);
   const iconClass = "ftl-ext-svg-button";
   const orderBtn = createEl("button", ["ftl-ext-svg-button"]);
   const orderIcon = createEl("div", [iconClass]);
-  orderIcon.innerHTML = SVG_DOWN_ARROW;
+  orderIcon.innerHTML = isAscending ? SVG_UP_ARROW : SVG_DOWN_ARROW;
   orderBtn.appendChild(orderIcon);
   orderBtn.addEventListener("click", () => {
     isAscending = !isAscending;
+    updateSetting(orderSettingKey, isAscending);
     orderIcon.innerHTML = isAscending ? SVG_UP_ARROW : SVG_DOWN_ARROW;
     renderPanel();
   });
@@ -644,10 +648,16 @@ function setupLogPanel(mountPoint, logKey, renderFn, wrapperClasses = []) {
 	
 	const now = Date.now();
     entriesContainer.querySelectorAll("[data-timestamp]").forEach(el => {
+	  // Add a flashing animation for the new elements
       const ts = Number(el.dataset.timestamp);
       if (!isNaN(ts) && now - ts < 1000) {
         el.classList.add("ftl-ext-new-flash");
       }
+	  
+	  // Remove the class when its animation finishes, so it won't replay
+      el.addEventListener("animationend", () => {
+        el.classList.remove("ftl-ext-new-flash");
+      }, { once: true });
     });
   }
 

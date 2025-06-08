@@ -275,8 +275,14 @@ const settingDefinitions = [
     group: "Crafting",
     displayName: "Show Recipes When Crafting",
     type: "boolean",
-    defaultValue: true,
-	groupToggler: true
+    defaultValue: true
+  },
+  {
+    key: "displayRecipesInConsumeModal",
+    group: "Crafting",
+    displayName: "Show Recipes When Consuming",
+    type: "boolean",
+    defaultValue: true
   },
   
  /**
@@ -351,6 +357,15 @@ const settingDefinitions = [
 	max: 200,
     defaultValue: 50
   },
+  {
+    key: "logAdminMessagesOrderAsc",
+    group: "Logging",
+	subGroup: "Admin Messages",
+    displayName: "",
+    type: "order",
+    defaultValue: false
+  },
+  
   
   // Staff Message Logging
   {
@@ -371,6 +386,14 @@ const settingDefinitions = [
 	min: 1,
 	max: 200,
     defaultValue: 50
+  },
+  {
+    key: "logStaffMessagesOrderAsc",
+    group: "Logging",
+	subGroup: "Staff Messages",
+    displayName: "",
+    type: "order",
+    defaultValue: false
   },
   
   // Pings Logging
@@ -393,6 +416,14 @@ const settingDefinitions = [
 	max: 200,
     defaultValue: 50
   },
+  {
+    key: "logPingsOrderAsc",
+    group: "Logging",
+	subGroup: "Pings",
+    displayName: "",
+    type: "order",
+    defaultValue: false
+  },
   
   // TTS Logging
   {
@@ -413,6 +444,14 @@ const settingDefinitions = [
 	min: 1,
 	max: 200,
     defaultValue: 50
+  },
+  {
+    key: "logTtsOrderAsc",
+    group: "Logging",
+	subGroup: "TTS",
+    displayName: "",
+    type: "order",
+    defaultValue: false
   },
   
  /**

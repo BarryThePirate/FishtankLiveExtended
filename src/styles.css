@@ -101,7 +101,7 @@
 .ftl-ext-staff-messages-wrapper {
   border: 1px solid #505050;
   background-color: #101010;
-  padding: 20px;
+  padding: 0.5rem;
   max-height: 52vh;
   width: 700px;
   overflow-y: auto;
@@ -201,7 +201,7 @@
 }
 
 .ftl-ext-tip-section {
-  margin-top: 20px;
+  margin-bottom: 0.5rem;
   text-align: center;
   font-size: 14px;
   overflow: hidden;
