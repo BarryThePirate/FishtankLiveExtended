@@ -27,17 +27,18 @@ Toggle what you want to be hidden in the chat. This feature only hides messages.
 ## Chat Filtering
  - The chat dropdown has a new section if streams are currently happening
  - Clicking on one of the stream names will hide messages in chat that are not from people watching that stream (It does not add or remove messages from the chat box, so the max chat length still applies)
- - EXPERIMENTAL - option in settings to automatically apply the stream room filter when as you change streams (This is experimental due to not being able to properly test when no streams are running on the site)
+ - Option in settings to automatically apply the stream room filter when as you change streams
+ - EXPERIMENTAL - setting to re-enable the chat dropdown if it is disabled by not having a season pass (this feature is janky and don't turn it on if you have a season pass)
 
 ## Crafting
  - The 'Crafting' section on the FTL Extended Settings screen has a search box for seeing recipes
- - Automatically displays known recipes when crafting with an item
+ - Automatically displays known recipes when crafting with an item or consuming an item
 
 ## Logging
  - Logs the system messages that appear at the bottom of the screen when an admin manually sends a message or when the system automatically displays one along with many settings to choose what system message get logged
  - Logs chat message from staff members that have the staff message styling and the staff picture as their profile picture
  - Logs each ping you recieve
- - Logs TTS sent by other users
+ - Logs TTS sent by other users and has a dropdown to filter to a specific room
 
 ## Clickable Zones
 Untested and experimental.
