@@ -37,6 +37,7 @@ function filter(message) {
 }
 
 function unfilter(message) {
+  if (message.classList.contains('ftl-ext-spam')) return;
   message.style.display = '';
   message.classList.remove('ftl-ext-filtered');
 }
