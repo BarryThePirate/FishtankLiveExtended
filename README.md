@@ -3,6 +3,10 @@ An open source project aimed at extending functionality on fishtank.live
 
 Currently available on [Chrome](https://chromewebstore.google.com/detail/dgalkmpecjmnichfppbbpgdekgfbiige?utm_source=item-share-cb) and [Firefox](https://addons.mozilla.org/en-GB/firefox/addon/fishtank-live-extended/).
 
+# Contribute
+<img src="images/contributor.gif" width="400" alt="Contributor">
+Become a code contributor and your username will show up with a unique effect on the site for anyone using this extension.
+
 # Features
 
 ## Customisable Settings
