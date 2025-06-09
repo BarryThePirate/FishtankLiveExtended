@@ -1,13 +1,18 @@
 <h1 align="center">Fishtank Live Extended</h1>
-An open source project aimed at extending functionality on fishtank.live
 
-Currently available on [Chrome](https://chromewebstore.google.com/detail/dgalkmpecjmnichfppbbpgdekgfbiige?utm_source=item-share-cb) and [Firefox](https://addons.mozilla.org/en-GB/firefox/addon/fishtank-live-extended/).
+<div align="center">
+  An open source project aimed at extending functionality on fishtank.live
+
+  Currently available on [Chrome](https://chromewebstore.google.com/detail/dgalkmpecjmnichfppbbpgdekgfbiige?utm_source=item-share-cb) and [Firefox](https://addons.mozilla.org/en-GB/firefox/addon/fishtank-live-extended/).
+</div>
 
 <h1 align="center">Contribute</h1>
 <div align="center">
   <img src="images/contributor.gif" width="400" alt="Contributor">
 </div>
-Become a code contributor and your username will show up with a unique effect on the site for anyone using this extension.
+<div align="center">
+  Become a code contributor and your username will show up with a unique effect on the site for anyone using this extension.
+</div>
 
 <h1 align="center">Features</h1>
 
