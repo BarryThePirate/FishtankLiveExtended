@@ -7,7 +7,7 @@ Currently available on [Chrome](https://chromewebstore.google.com/detail/dgalkmp
 <img src="images/contributor.gif" width="400" alt="Contributor">
 Become a code contributor and your username will show up with a unique effect on the site for anyone using this extension.
 
-# Features
+<h1 align="center">Features</h1>
 
 ## Customisable Settings
 Many settings are off by default, especially if experimental.
