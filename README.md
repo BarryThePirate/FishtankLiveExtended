@@ -47,6 +47,7 @@ Untested and experimental.
 
 <h1 align="center">Install From  GitHub</h1>
 If you want to develop the extension you will need to install it unpacked in your browser. If you already have it installed from the store, you'll need to disable that version.
+
  - On GitHub, click Code → Download ZIP
  - Extract the ZIP file
 
