@@ -57,11 +57,11 @@ If you want to develop the extension you will need to install it unpacked in you
  - Click “Load unpacked”
  - Select the root folder of the extension (the one that contains manifest.json)
 
-To test changes, you need to click the Reload button on the extension in the Manage Extensions page
+To test changes, you need to click the Reload button on the extension in the Manage Extensions page.
 
 ## Firefox
  - Go to `about:debugging#/runtime/this-firefox` in your address bar
  - Click "Load Temporary Add-on"
  - Select `manifest.json` within the root folder of the extension
 
-To test changes, you need to click the Reload button on the extension in the `about:debugging#/runtime/this-firefox` page
+To test changes, you need to click the Reload button on the extension in the `about:debugging#/runtime/this-firefox` page.
