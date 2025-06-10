@@ -55,7 +55,7 @@ If you want to develop the extension you will need to install it unpacked in you
  - Open Chrome Extensions Page: Go to `chrome://extensions/` in your address bar or open the menu → Extensions → Manage Extensions
  - Turn on the "Developer mode" switch in the top-right corner of the page
  - Click “Load unpacked”
- - Select the root folder of the extension (the one that contains manifest.json).
+ - Select the root folder of the extension (the one that contains manifest.json)
 
 To test changes, you need to click the Reload button on the extension in the Manage Extensions page
 
