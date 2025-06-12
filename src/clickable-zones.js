@@ -15,8 +15,7 @@ function monitorMainPanelForPlayer() {
 
     video.addEventListener('playing', () => {
       const clickableZonesClass = getFullClassNameStartsWith(clickableZonesPrefix);
-      if (clickableZonesClass) {  
-        console.log(document.querySelector(`.${clickableZonesClass}`));
+      if (clickableZonesClass) {
         const adminMessage = new CustomEvent("toastopen", {
           detail: JSON.stringify({
             message: "Clickable zone detected",

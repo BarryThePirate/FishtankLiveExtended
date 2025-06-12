@@ -2,12 +2,13 @@
   * Globals
   */
 let DEBUGGING = false;
+let MOBILE = false;
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
 const PINGS_LOG_KEY = "ftl-ext-pings-log";
 const TTS_LOG_KEY = "ftl-ext-tts-log";
-const RECIPE_URL = "https://gist.githubusercontent.com/BarryThePirate/42e69725c5d8ab70c85bc99ac010263a/raw/recipes.b64?nocache=" + Date.now();
+const RECIPE_URL = "https://barrythepirate.github.io/recipes.b64?nocache=" + Date.now();
 let USERNAME;
 let USER_ID;
 let CRAFTING_RECIPES;
@@ -20,7 +21,7 @@ const CONTRIBUTORS = ["BarryThePirate"];
   */
 // Garbage Can
 const SVG_GARBAGE_CAN = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="24" height="24">
   <!-- Lid -->
   <rect x="9" y="0" width="6" height="2"></rect>
   <rect x="7" y="2" width="2" height="2"></rect>
@@ -38,7 +39,7 @@ const SVG_GARBAGE_CAN = `
 
 // Down arrow
 const SVG_DOWN_ARROW = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="24" height="24">
   <rect x="11" y="22" width="2" height="2"></rect>
   <rect x="9" y="20" width="2" height="2"></rect>
   <rect x="7" y="18" width="2" height="2"></rect>
@@ -55,7 +56,7 @@ const SVG_DOWN_ARROW = `
 
 // Up arrow
 const SVG_UP_ARROW = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="24" height="24">
   <rect x="11" y="0" width="2" height="2"></rect>
   <rect x="9" y="2" width="2" height="2"></rect>
   <rect x="7" y="4" width="2" height="2"></rect>
@@ -95,7 +96,7 @@ const SVG_DOWN_ARROW_MINI = `
 
 // Skull and crossbones
 const SVG_SKULL_AND_CROSSBONES = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black" width="24" height="24">
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#F8EC94" width="24" height="24">
   <!-- Skull -->
   <rect x="7" y="6" width="10" height="2"></rect>
   <rect x="6" y="8" width="12" height="2"></rect>
@@ -262,7 +263,7 @@ const settingDefinitions = [
   {
     key: "enableChatDropdownIfDisabled",
     group: "Chat Filters",
-    displayName: "Re-enable Dropdown if Disabled (EXPERIMENTAL FEATURE)",
+    displayName: "Re-enable Dropdown if Disabled (EXPERIMENTAL FEATURE, Requires Refresh)",
     type: "boolean",
     defaultValue: false
   },

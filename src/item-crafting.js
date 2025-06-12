@@ -62,7 +62,7 @@ function createRecipeTable(recipes, query) {
 function displayCraftingRecipesForCraftingItem(modal) {
   if (!SETTINGS.displayRecipesInCraftModal || !CRAFTING_RECIPES) return;
 
-  const modalHeader = getObjectFromClassNamePrefix('modal_header', modal);
+  const modalHeader = getObjectFromClassNamePrefix('modal_body', modal);
   if (!modalHeader) return;
 
   const craftItems = getAllObjectsFromClassNamePrefix('craft-item-modal_name', modal);
@@ -109,7 +109,7 @@ function displayCraftingRecipesForCraftingItem(modal) {
 function displayCraftingRecipesForConsumeItem(modal) {
   if (!SETTINGS.displayRecipesInConsumeModal || !CRAFTING_RECIPES) return;
 
-  const modalHeader = getObjectFromClassNamePrefix('modal_header', modal);
+  const modalHeader = getObjectFromClassNamePrefix('modal_body', modal);
   if (!modalHeader) return;
 
   let consumeItem = getObjectFromClassNamePrefix('queue-item-modal_name', modal);

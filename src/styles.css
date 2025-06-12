@@ -19,7 +19,20 @@
   justify-content: center;
 }
 
+.ftl-ext-tab-controls-mobile {
+  display: grid;
+  align-items: center;
+  justify-content: center;
+}
+
 .ftl-ext-settings-tab-button {
+  cursor: pointer;
+  background-color: #2b2d2e40;
+  padding: 10px;
+  border: 1px solid #505050;
+}
+
+.ftl-ext-settings-tab-button-mobile {
   cursor: pointer;
   background-color: #2b2d2e40;
   padding: 10px;
@@ -30,6 +43,10 @@
   background-color: #3c3f40;
 }
 
+.ftl-ext-settings-tab-button-mobile:hover {
+  background-color: #3c3f40;
+}
+
 .ftl-ext-settings-tab-button-active {
   color: #f8ec94;
   background-color: #F8EC941A;
@@ -37,6 +54,14 @@
 
 .ftl-ext-sub-tab-controls {
   display: flex;
+  margin-bottom: 2rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.ftl-ext-sub-tab-controls-mobile {
+  padding-top: 1rem;
+  display: grid;
   margin-bottom: 2rem;
   align-items: center;
   justify-content: center;
@@ -58,6 +83,16 @@
   border-bottom-right-radius: 4px;
 }
 
+.ftl-ext-settings-tab-button-mobile:first-child {
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.ftl-ext-settings-tab-button-mobile:last-child {
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
 .ftl-ext-settings-group {
   margin: 0 auto;
 }
@@ -66,18 +101,35 @@
   padding: 6px;
 }
 
+.ftl-ext-input-mobile {
+  padding: 6px;
+  margin-bottom: 10px;
+}
+
 .ftl-ext-input-checkbox {
   accent-color: #F8EC94;
 }
 
 .ftl-ext-settings-wrapper {
-  margin-bottom: 10px;
+  margin-bottom: 15px;
+  display: flex;
 }
 
 .ftl-ext-setting-wrapper {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.ftl-ext-setting-wrapper-mobile {
+  display: grid;
+  align-items: center;
+  text-align: center;
+}
+
+.ftl-ext-setting-label {
+  margin-left: 10px;
+  margin-right: 10px;
 }
 
 .ftl-ext-setting-wrapper.flex-start {
@@ -112,6 +164,15 @@
   overflow-y: auto;
 }
 
+.ftl-ext-staff-messages-wrapper-mobile {
+  border: 1px solid #505050;
+  background-color: #101010;
+  padding-top: 0.5rem;
+  height: auto;
+  width: 100%;
+  overflow-y: auto;
+}
+
 .ftl-ext-staff-message-container {
   text-align: left;
   border: 1px solid #505050;
@@ -128,6 +189,16 @@
   padding: 0.5rem;
   height: 36vh;
   width: 700px;
+  overflow-y: auto;
+}
+
+.ftl-ext-admin-messages-wrapper-mobile {
+  border: 1px solid #505050;
+  background-color: #101010;
+  text-align: center;
+  padding-top: 0.5rem;
+  height: auto;
+  width: 100%;
   overflow-y: auto;
 }
   
@@ -156,6 +227,15 @@
   font-size: 14px !important;
 }
 
+.ftl-ext-admin-timestamp-container-mobile {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #55d5b4;
+  font-size: 14px !important;
+}
+
 .ftl-ext-clickable-username {
   margin-top: 10px;
   color: #F8EC94;
@@ -165,6 +245,15 @@
 
 .ftl-ext-admin-body-container {
   width: 80%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px;
+  color: #fff;
+}
+
+.ftl-ext-admin-body-container-mobile {
+  width: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -190,18 +279,26 @@
 }
 
 .ftl-ext-craft-search-wrapper {
+  width: 100%;
   margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .ftl-ext-crafting-search-input {
+  display: block;
+  width: 200px;   
   padding: 6px;
-  width: 100%;
+  margin: 0 auto;
 }
 
 .ftl-ext-recipes-container {
+  width: 100%;
   margin-top: 10px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
 .ftl-ext-tip-section {
@@ -217,10 +314,21 @@
   text-decoration: none;
 }
 
+.ftl-ext-tip-spacer-mobile {
+  height: 1rem;
+}
+
 .ftl-ext-log-controls {
   display: flex;
   justify-content: center;
   gap: 6.0rem;
+  margin-bottom: 0.5rem;
+}
+
+.ftl-ext-log-controls-mobile {
+  display: flex;
+  justify-content: center;
+  gap: 2.0rem;
   margin-bottom: 0.5rem;
 }
 
@@ -241,6 +349,7 @@
   margin-left: 0.25rem;
   white-space: nowrap;
   font-size: 0.9rem;
+  position: absolute;
 }
 
 /* Style Yes/No inline buttons */
@@ -250,6 +359,23 @@
   border: none;
   margin-left: 0.25rem;
   margin-right: 0.25rem;
+  cursor: pointer;
+}
+
+.ftl-ext-confirmation-row-mobile {
+  padding: 1rem;
+  display: block;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.ftl-ext-confirm-yes-mobile,
+.ftl-ext-confirm-no-mobile {
+  background: transparent;
+  border: none;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
   cursor: pointer;
 }
 
@@ -278,9 +404,31 @@
   appearance: none;
 }
 
-/* focus state */
-.ftl-ext-log-filter:focus {
-  background-image: var(--ftl-arrow-up);
+.ftl-ext-log-filter-mobile {
+  align-items: center;
+  display: flex;
+  margin: auto;
+  margin-bottom: 0.5rem;
+  white-space: nowrap;
+  font-size: 1rem;
+  
+  min-width: 6rem;
+  padding: 0.25rem 0.5rem;
+  
+  /* border & background */
+  border: 1px solid #505050;
+  background-image: var(--ftl-arrow-down);
+  background-repeat: no-repeat;
+  background-color: #F8EC941A;
+  background-size: 18px 12px;
+  background-position: calc(100% - 0.3em) calc(50% + 2px);
+  padding-right: 1.5em;
+  color: #F8EC94;
+  
+  /* remove native arrow so we can draw our own */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
 .ftl-ext-log-filter option {

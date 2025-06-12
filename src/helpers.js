@@ -192,6 +192,92 @@ function makeUsernameClickable(message) {
  * @param {string} username  – the username to mention
  */
 function usernameClicked(username) {
+  if (DEBUGGING) console.log('Username clicked: ' + username);
+  
+  // Use this for desktop. Helper to dispatch keydown→beforeinput→input→keyup for a single character
+  function dispatchChar(editorEl, char) {
+    const charCode = char.charCodeAt(0);
+    const isLetter = /[a-zA-Z]/.test(char);
+    const code = isLetter ? "Key" + char.toUpperCase() : "";
+    const init = {
+      key: char,
+      code,
+      charCode,
+      keyCode: charCode,
+      which: charCode,
+      bubbles: true,
+      cancelable: true
+    };
+    editorEl.dispatchEvent(new KeyboardEvent("keydown", init));
+    editorEl.dispatchEvent(new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: char,
+      inputType: "insertText"
+    }));
+    editorEl.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      cancelable: true,
+      data: char,
+      inputType: "insertText"
+    }));
+    editorEl.dispatchEvent(new KeyboardEvent("keyup", init));
+  }
+  
+  function moveCaretToEnd(el) {
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);   // select all…
+    range.collapse(false);          // …then collapse to the end
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  
+  // Use this for mobile
+  function insertTextContenteditable(el, text) {
+	moveCaretToEnd(el);
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    // collapse after the inserted text
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    
+    // notify Slate/React that content changed
+    el.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      cancelable: true,
+      data: text,
+      inputType: "insertText"
+    }));
+  }
+  
+  if (MOBILE) {
+	document.dispatchEvent(new CustomEvent("modalclose"));
+	setTimeout(() => {
+	  const bottomBarButtons = getAllObjectsFromClassNamePrefix('mobile-bottom-bar_button');
+      bottomBarButtons.forEach(btn => {
+		setTimeout(() => {
+		  if (btn.textContent.trim().toLowerCase() === "chat") {
+			btn.click();
+			setTimeout(() => {
+			  const chatInput = document.getElementById("chat-input");
+			  if (!chatInput || !username) return;
+			  
+			  chatInput.focus();
+			  insertTextContenteditable(chatInput, "@" + username + " ");
+		    }, 50);
+		  }
+		}, 50);
+	  });
+    }, 50);
+	return;
+  }
+  
   const chatInput = document.getElementById("chat-input");
   if (!chatInput || !username) return;
 
@@ -206,36 +292,6 @@ function usernameClicked(username) {
 
   // 2) After Slate has processed focus/selection, simulate typing
   setTimeout(() => {
-    // Helper to dispatch keydown→beforeinput→input→keyup for a single character
-    function dispatchChar(editorEl, char) {
-      const charCode = char.charCodeAt(0);
-      const isLetter = /[a-zA-Z]/.test(char);
-      const code = isLetter ? "Key" + char.toUpperCase() : "";
-      const init = {
-        key: char,
-        code,
-        charCode,
-        keyCode: charCode,
-        which: charCode,
-        bubbles: true,
-        cancelable: true
-      };
-      editorEl.dispatchEvent(new KeyboardEvent("keydown", init));
-      editorEl.dispatchEvent(new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        data: char,
-        inputType: "insertText"
-      }));
-      editorEl.dispatchEvent(new InputEvent("input", {
-        bubbles: true,
-        cancelable: true,
-        data: char,
-        inputType: "insertText"
-      }));
-      editorEl.dispatchEvent(new KeyboardEvent("keyup", init));
-    }
-
     const textToType = "@" + username + " ";
     for (const ch of textToType) {
       dispatchChar(chatInput, ch);

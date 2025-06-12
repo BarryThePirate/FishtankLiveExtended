@@ -91,7 +91,13 @@ function injectPluginSettingsIntoModal() {
   const outerContainer = createEl("div", ["ftl-ext-settings-editor-container"]);
 
   // 7) Main tab‐bar
-  const mainTabBar = createEl("div", ["ftl-ext-tab-controls"]);
+  let mainTabBar;
+  if (MOBILE) {
+	mainTabBar = createEl("div", ["ftl-ext-tab-controls-mobile"]);
+  } else {
+	mainTabBar = createEl("div", ["ftl-ext-tab-controls"]);
+  }
+  
   outerContainer.appendChild(mainTabBar);
 
   // 8) We'll keep track of:
@@ -135,7 +141,9 @@ function injectPluginSettingsIntoModal() {
       subGroupTabButtons[def.group] = {};
 
       // Build a main‐tab button for this group:
-      const mainTabButton = createButton(def.group, ["ftl-ext-settings-tab-button"], (event) => {
+	  let settingsTabButtonClass = "ftl-ext-settings-tab-button";
+	  if (MOBILE) settingsTabButtonClass = "ftl-ext-settings-tab-button-mobile";
+      const mainTabButton = createButton(def.group, [settingsTabButtonClass], (event) => {
         // Hide every group
         document.querySelectorAll(".ftl-ext-settings-group").forEach(el => {
           el.style.display = "none";
@@ -173,7 +181,12 @@ function injectPluginSettingsIntoModal() {
       groupDiv.appendChild(groupHeader);*/
 
       // Create a sub‐tab‐bar area inside this group:
-      const subTabBar = createEl("div", ["ftl-ext-sub-tab-controls"]);
+	  let subTabBar;
+	  if (MOBILE) {
+		subTabBar = createEl("div", ["ftl-ext-sub-tab-controls-mobile"]);
+	  } else {
+		subTabBar = createEl("div", ["ftl-ext-sub-tab-controls"]);
+	  }
       groupDiv.appendChild(subTabBar);
     }
 
@@ -190,8 +203,10 @@ function injectPluginSettingsIntoModal() {
         lastCreatedGroupContainer.appendChild(subDiv);
         subGroupContainers[grp][sub] = subDiv;
 
+        let subBtnClass = "ftl-ext-settings-tab-button";
+		if (MOBILE) subBtnClass = "ftl-ext-settings-tab-button-mobile";
         // Create the tab button for this subGroup
-        const subBtn = createButton(sub, ["ftl-ext-settings-tab-button"], () => {
+        const subBtn = createButton(sub, [subBtnClass], () => {
           // Hide other sub‐containers in this group
           Object.values(subGroupContainers[grp]).forEach(c => {
             c.style.display = "none";
@@ -205,7 +220,11 @@ function injectPluginSettingsIntoModal() {
           subBtn.classList.add("ftl-ext-settings-sub-tab-button-active");
         });
         // Add that button into the group’s subTabBar
-        lastCreatedGroupContainer.querySelector(".ftl-ext-sub-tab-controls").appendChild(subBtn);
+		if (MOBILE) {
+		  lastCreatedGroupContainer.querySelector(".ftl-ext-sub-tab-controls-mobile").appendChild(subBtn);
+		} else {
+		  lastCreatedGroupContainer.querySelector(".ftl-ext-sub-tab-controls").appendChild(subBtn);
+		}
         subGroupTabButtons[grp][sub] = subBtn;
 
         // If it’s Logging→“Staff Messages” or “Admin Messages”, store for later:
@@ -238,7 +257,8 @@ function injectPluginSettingsIntoModal() {
 
     // Build the label text node (for boolean & text-array cases)
     const labelEl = document.createElement("label");
-    labelEl.textContent = "  " + def.displayName;
+    labelEl.textContent = def.displayName;
+	labelEl.classList.add('ftl-ext-setting-label');
 
     // Now switch by def.type
     let inputEl;
@@ -271,7 +291,7 @@ function injectPluginSettingsIntoModal() {
           // Trigger initial state
           setTimeout(() => inputEl.dispatchEvent(new Event("change")), 0);
         }
-
+		
         // Append checkbox + label, then add to currentGroupContainer
         wrapperDiv.appendChild(inputEl);
         wrapperDiv.appendChild(labelEl);
@@ -314,7 +334,11 @@ function injectPluginSettingsIntoModal() {
         // Adjust label to mention newline separation
         labelEl.innerHTML = def.displayName + '<br />(Separated by new lines, not case sensitive)';
 
-        inputEl = createEl("textarea", ["ftl-ext-input"]);
+		if (MOBILE) {
+		  inputEl = createEl("textarea", ["ftl-ext-input-mobile"]);
+		} else {
+		  inputEl = createEl("textarea", ["ftl-ext-input"]);
+		}
         inputEl.rows = 5;
         // Pre-populate from SETTINGS[def.key] (an array → join by newline)
         inputEl.value = SETTINGS[def.key].join("\n");
@@ -326,7 +350,11 @@ function injectPluginSettingsIntoModal() {
           updateSetting(def.key, lines);
         });
 
-        wrapperDiv.classList.add("ftl-ext-setting-wrapper");
+		if (MOBILE) {
+		  wrapperDiv.classList.add("ftl-ext-setting-wrapper-mobile");
+		} else {
+		  wrapperDiv.classList.add("ftl-ext-setting-wrapper");
+		}
         wrapperDiv.appendChild(inputEl);
         wrapperDiv.appendChild(labelEl);
         currentGroupContainer.appendChild(wrapperDiv);
@@ -363,6 +391,16 @@ function injectPluginSettingsIntoModal() {
     searchWrapper.appendChild(recipesContainer);
     craftingGroupContainer.appendChild(searchWrapper);
   }
+  
+  let adminWrapperClass;
+  let staffWrapperClass;
+  if (MOBILE) {
+	adminWrapperClass = "ftl-ext-admin-messages-wrapper-mobile";
+	staffWrapperClass = "ftl-ext-staff-messages-wrapper-mobile";
+  } else {
+	adminWrapperClass = "ftl-ext-admin-messages-wrapper";
+	staffWrapperClass = "ftl-ext-staff-messages-wrapper";
+  }
 
   // ─── Admin Messages ─────────────────────────────────────────────────
   setupLogPanel(
@@ -376,12 +414,16 @@ function injectPluginSettingsIntoModal() {
         const inner = createEl("div", ["ftl-ext-admin-message-container"]);
 		inner.dataset.timestamp = msg.timestamp;
     
-        // Timestamp
-        const timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+		let timestampDiv;
+		let bodyWrapper;
+		if (MOBILE) {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container-mobile"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container-mobile"]);
+		} else {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+		}
         timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
-    
-        // Body (title + message)
-        const bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
     
         const titleDiv = createEl("div", ["ftl-ext-admin-title"]);
         titleDiv.textContent = typeof msg.header === "string" ? msg.header : "";
@@ -401,15 +443,20 @@ function injectPluginSettingsIntoModal() {
         }
     
         // Assemble DOM
-        bodyWrapper.append(titleDiv, messageDiv);
-        inner.append(timestampDiv, bodyWrapper);
+		if (MOBILE) {
+          bodyWrapper.append(titleDiv, messageDiv, timestampDiv);
+          inner.append(bodyWrapper);
+		} else {
+		  bodyWrapper.append(titleDiv, messageDiv);
+          inner.append(timestampDiv, bodyWrapper);
+		}
         outer.appendChild(inner);
     
         // Mount into the panel
         container.appendChild(outer);
       });
     },
-    ["ftl-ext-admin-messages-wrapper"]
+    [adminWrapperClass]
   );
   
   // ─── Staff Messages ─────────────────────────────────────────────────
@@ -433,7 +480,7 @@ function injectPluginSettingsIntoModal() {
         container.appendChild(wrapper);
       });
     },
-    ["ftl-ext-staff-messages-wrapper"]
+    [staffWrapperClass]
   );
   
   // ─── Pings ────────────────────────────────────────────────────────────
@@ -457,7 +504,7 @@ function injectPluginSettingsIntoModal() {
         container.appendChild(wrapper);
       });
     },
-    ["ftl-ext-staff-messages-wrapper"]
+    [staffWrapperClass]
   );
   
   // ─── TTS ──────────────────────────────────────────────────────────────
@@ -471,8 +518,20 @@ function injectPluginSettingsIntoModal() {
         const inner   = createEl("div", ["ftl-ext-admin-message-container"]);
 		inner.dataset.timestamp = msg.timestamp;
 		
-        const tsDiv   = createEl("div", ["ftl-ext-admin-timestamp-container"]);
-        tsDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
+		let timestampDiv;
+		let bodyWrapper;
+		let body;
+		if (MOBILE) {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container-mobile"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container-mobile"]);
+		  body = createEl("div", ["ftl-ext-admin-body-container-mobile"]);
+		} else {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+		  body = createEl("div", ["ftl-ext-admin-body-container"]);
+		}
+		
+		timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
 	  
         const roomDiv = createEl("div", ["ftl-ext-admin-room"]);
         roomDiv.textContent = msg.room || "";
@@ -485,15 +544,18 @@ function injectPluginSettingsIntoModal() {
         fromSpan.textContent = msg.from ? "@" + msg.from : "";
         fromSpan.addEventListener("click", () => usernameClicked(msg.from));
 	  
-        const body = createEl("div", ["ftl-ext-admin-body-container"]);
-        body.append(roomDiv, textDiv, fromSpan);
-	  
-        inner.append(tsDiv, body);
+	    if (MOBILE) {
+		  body.append(roomDiv, textDiv, fromSpan, timestampDiv);
+          inner.append(body);
+		} else {
+          body.append(roomDiv, textDiv, fromSpan);
+          inner.append(timestampDiv, body);
+		}
         wrapper.appendChild(inner);
         container.appendChild(wrapper);
       });
     },
-    ["ftl-ext-staff-messages-wrapper"]
+    [staffWrapperClass]
   );
 
   // 11) Show the first group by default
@@ -502,7 +564,8 @@ function injectPluginSettingsIntoModal() {
     firstGroupDiv.style.display = "block";
   }
   // Activate the first main tab button
-  const firstMainTabBtn = mainTabBar.querySelector(".ftl-ext-settings-tab-button");
+  let firstMainTabBtn = mainTabBar.querySelector(".ftl-ext-settings-tab-button");
+  if (MOBILE) firstMainTabBtn = mainTabBar.querySelector(".ftl-ext-settings-tab-button-mobile");
   if (firstMainTabBtn) {
     firstMainTabBtn.classList.add("ftl-ext-settings-tab-button-active");
   }
@@ -550,7 +613,12 @@ function injectPluginSettingsIntoModal() {
   tipSection.appendChild(tipLink);
   
   // ── Insert a line break ─────────────────────────────────────────────────
-  tipSection.appendChild(document.createTextNode("\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"));
+  if (MOBILE) {
+	const tipSectionSpacing = createEl("div", ["ftl-ext-tip-spacer-mobile"]);
+	tipSection.appendChild(tipSectionSpacing);
+  } else { 
+    tipSection.appendChild(document.createTextNode("\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"));
+  }
   
   // — Contribute text + link
   const contributeText = document.createElement("span");
@@ -599,30 +667,19 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
   if (orderSettingKey === "logTtsOrderAsc") {
 	const downURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_DOWN_ARROW_MINI.trim());
 	const upURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_UP_ARROW_MINI.trim());
-    filterSelect = createEl("select", ["ftl-ext-log-filter"]);
-    filterSelect.style.left = "0px";
+    if (MOBILE) {
+	  filterSelect = createEl("select", ["ftl-ext-log-filter-mobile"]);
+	} else {
+	  filterSelect = createEl("select", ["ftl-ext-log-filter"]);
+	  filterSelect.style.left = "0px";
+	}
+    
     filterSelect.addEventListener("change", e => {
       currentRoom = e.target.value;
       renderPanel();
     });
 	filterSelect.style.setProperty("--ftl-arrow-down", `url("${downURI}")`);
 	filterSelect.style.setProperty("--ftl-arrow-up",   `url("${upURI}")`);
-	
-	// Make the arrows switch correctly
-	let _ftlOpening = false;
-	filterSelect.addEventListener("click", () => {
-	  if (!_ftlOpening) {
-		_ftlOpening = true;
-	  } else {
-		setTimeout(() => {
-		  filterSelect.blur();
-		  _ftlOpening = false;
-		}, 0);
-	  }
-	});
-	filterSelect.addEventListener("blur", () => {
-	  _ftlOpening = false;
-	});
   }
 
   // Delete button (with confirmation)
@@ -633,44 +690,68 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
 
   deleteBtn.addEventListener("click", () => {
     if (confirmRow) return;
-
-    // Build confirmation row
-    confirmRow = createEl("div", ["ftl-ext-confirmation-row"]);
+	
+    let yesBtnClass;
+	let noBtnClass;
+	if (MOBILE) {
+	  confirmRow = createEl("div", ["ftl-ext-confirmation-row-mobile"]);
+	  yesBtnClass = 'ftl-ext-confirm-yes-mobile';
+	  noBtnClass = 'ftl-ext-confirm-no-mobile';
+	} else {
+	  confirmRow = createEl("div", ["ftl-ext-confirmation-row"]);
+	  yesBtnClass = 'ftl-ext-confirm-yes';
+	  noBtnClass = 'ftl-ext-confirm-no';
+	}
     confirmRow.textContent = "Are you sure? ";
-
-    const yesBtn = createButton("Yes", ["ftl-ext-confirm-yes"], () => {
+	
+    const yesBtn = createButton("Yes", [yesBtnClass], () => {
       deleteLog(logKey);
       confirmRow.remove();
       confirmRow = null;
     });
-    const noBtn = createButton("No", ["ftl-ext-confirm-no"], () => {
+    const noBtn = createButton("No", [noBtnClass], () => {
       confirmRow.remove();
       confirmRow = null;
     });
     confirmRow.append(yesBtn, noBtn);
-
-    // Position it absolutely next to the deleteBtn
-    confirmRow.style.position = "absolute";
-    // Calculate left offset: deleteBtn’s left edge + its width + small gap
-    const left = deleteBtn.offsetLeft + deleteBtn.offsetWidth + 8;
-    confirmRow.style.left = left + "px";
-    confirmRow.style.top = "50%";
-    confirmRow.style.transform = "translateY(-50%)";
-
-    // Insert into the controlsRow (below we’ll create it)
-    controlsRow.appendChild(confirmRow);
+  
+    if (!MOBILE) {
+      // to the right of the button
+      confirmRow.style.left  = deleteBtn.offsetLeft + deleteBtn.offsetWidth + 8 + "px";
+      confirmRow.style.top   = "50%";
+      confirmRow.style.transform = "translateY(-50%)";
+    }
+    if (MOBILE) {
+	  // drop it immediately *after* controlsRow in the DOM:
+	  controlsRow.parentNode.insertBefore(confirmRow, controlsRow.nextSibling);
+	} else {
+	  controlsRow.appendChild(confirmRow);
+	}
   });
 
   // Entries container
   const entriesContainer = createEl("div", []);
 
   // Controls row, centered & relative
-  const controlsRow = createEl("div", ["ftl-ext-log-controls"]);
+  let controlsRow;
+  if (MOBILE) {
+	controlsRow = createEl("div", ["ftl-ext-log-controls-mobile"]);
+  } else {
+	controlsRow = createEl("div", ["ftl-ext-log-controls"]);
+  }
   controlsRow.style.position = "relative";  // allow absolute children
   controlsRow.append(orderBtn, deleteBtn);
-  if (filterSelect) controlsRow.appendChild(filterSelect);
   wrapper.append(controlsRow, entriesContainer);
 
+  if (filterSelect) {
+    if (MOBILE) {
+      // drop it immediately *after* controlsRow in the DOM:
+      controlsRow.parentNode.insertBefore(filterSelect, controlsRow.nextSibling);
+    } else {
+      controlsRow.appendChild(filterSelect);
+    }
+  }
+  
   // Mount
   mountPoint.appendChild(wrapper);
 

@@ -63,7 +63,7 @@ function logAdminMessage(id, header, message, type) {
   if (message) {
 	// If it isn't a string, change it to the innerHTML
 	message = typeof message === 'string' ? message : (message?.innerHTML || message);
-	lowerCaseMessage = typeof header === 'string' ? header.toLowerCase() : header;
+	lowerCaseMessage = typeof message === 'string' ? message.toLowerCase() : message;
   }
 	
   // Don't log admin messages sent from this plugin

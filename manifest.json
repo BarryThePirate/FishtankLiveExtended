@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fishtank Live Extended",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "An open source project aimed at extending functionality on fishtank.live",
   "permissions": [],
   "icons": {
@@ -22,6 +22,7 @@
         "src/filter.js",
         "src/logging.js",
         "src/video-player-observe.js",
+		"src/offline-recipes.js",
         "src/init.js"
       ],
       "run_at": "document_idle"

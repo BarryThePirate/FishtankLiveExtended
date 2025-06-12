@@ -48,7 +48,13 @@ function updateSetting(key, value) {
 }
 
 /**
+ * Check if we should be rendering for mobile
+ */
+if (screen.width < 800) MOBILE = true;
+
+/**
  * Get crafting recipes
+ * Make the crafting recipes base64: console.log(btoa(JSON.stringify([])));
  */
 async function loadRecipesFromRemote(url) {
   try {
@@ -57,7 +63,9 @@ async function loadRecipesFromRemote(url) {
 	return JSON.parse(atob(base64Text));
   } catch (err) {
     console.error("Failed to load or decode recipes:", err);
-    return;
+	console.warn('Using offline version of recipes (may be outdated)');
+	const base64Text = OFFLINE_CRAFTING_RECIPES;
+	return JSON.parse(atob(base64Text));
   }
 }
 
@@ -93,7 +101,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'top-bar-user_display-name',
 	then: recordUsername,
-	stopObservingWhenFound: false
+	stopObservingWhenFound: false,
   },
   {
 	// Add FTL Ext Settings button
@@ -101,7 +109,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'top-bar-user_dropdown',
 	then: createCustomButton,
-	stopObservingWhenFound: true
+	stopObservingWhenFound: true,
   },
   {
 	// Anti-spam & filtering on new chat messages
@@ -109,7 +117,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'chat-messages_chat-messages',
 	then: observeChatMessages,
-	stopObservingWhenFound: true
+	stopObservingWhenFound: true,
   },
   {
 	// Capture original chat dropdown options
@@ -117,7 +125,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'select_options',
 	then: saveDropdownOptions,
-	stopObservingWhenFound: true
+	stopObservingWhenFound: true,
   },
   {
 	// Observe chat dropdown opening
@@ -125,7 +133,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'select_options',
 	then: observeDropdownOpen,
-	stopObservingWhenFound: false
+	stopObservingWhenFound: false,
   },
   {
 	// Add stream names to chat dropdown for filtering
@@ -133,7 +141,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'live-streams_live-streams-grid',
 	then: observeStreamGrid,
-	stopObservingWhenFound: false
+	stopObservingWhenFound: false,
   },
   {
 	// Add stream names to chat dropdown for filtering
@@ -141,15 +149,15 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'live-stream-player_live-stream-player',
 	then: checkForPlayer,
-	stopObservingWhenFound: false
+	stopObservingWhenFound: false,
   },
 ];
 
 function recordUsername (object) {
-	if (object.innerHTML !== '') {
-		USERNAME = object.innerHTML;
-		USER_ID = object.dataset.userId;
-	}
+  if (object.innerHTML !== '') {
+    USERNAME = object.innerHTML;
+	USER_ID = object.dataset.userId;
+  }
 }
 
 const mainObserver = new MutationObserver(() => {
@@ -203,7 +211,7 @@ function contributors(message) {
     .some(u => u.toLowerCase() === name.toLowerCase());
   if (!isContributor) return;
 
-  // wrap it in your pulser span
+  // wrap the username in a span with pulser effect class
   const pulse = document.createElement('span');
   pulse.className = 'ftl-ext-text-pulser';
   pulse.textContent = name;
@@ -219,14 +227,19 @@ const modalActions = [
     modal: 'Craft Item',
 	before: displayCraftingRecipesForCraftingItem,
     then: displayCraftingRecipesForCraftingItem,
-	disconnectObserverDuringThen: true
+	disconnectObserverDuringThen: true,
   },
   {
     modal: 'Use Fishtoy',
 	before: displayCraftingRecipesForConsumeItem,
     then: displayCraftingRecipesForConsumeItem,
-	disconnectObserverDuringThen: true
+	disconnectObserverDuringThen: true,
   },
+  // TODO - rethink this as it shouldn't do it if your clicking the season pass button or because you can't post in chat
+  /*{
+    modal: 'Get Season Pass',
+	closeModal: true,
+  },*/
 ];
 
 document.addEventListener("modalopen", (e) => {
@@ -244,13 +257,22 @@ document.addEventListener("modalopen", (e) => {
   
   // Delay lookup until modal is actually rendered
   setTimeout(() => {
+	if (action.closeModal) {
+	  if (DEBUGGING) console.log('Closing modal: ' + action.modal);
+	  const closeEvent = new CustomEvent("modalclose");
+	  document.dispatchEvent(closeEvent);
+	  return;
+	}
+	  
     const object = document.getElementById('modal');
 	if (!object) return;
 	
 	if (action.before) action.before(object);
 
-	const observer = observeObject(object, action.then, true, action.disconnectObserverDuringThen);
-	OBJECT_OBSERVER_MAP.set(object, observer);
+	if (action.then) {
+	  const observer = observeObject(object, action.then, true, action.disconnectObserverDuringThen);
+	  OBJECT_OBSERVER_MAP.set(object, observer);
+	}
   }, 100);
 });
 

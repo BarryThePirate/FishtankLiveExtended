@@ -27,10 +27,7 @@ function applyAntiSpam(message) {
   if (SETTINGS.disableAntiSpam) return;
   
   const prefixes = [
-    'chat-message-happening_common',
-    'chat-message-happening_uncommon',
-    'chat-message-happening_rare',
-    'chat-message-happening_epic',
+    'chat-message-happening_item',
     'chat-message-happening_catastrophe',
     'chat-message-emote_chat-message-emote',
     'chat-message-stocks_chat-message-stocks',
@@ -78,10 +75,7 @@ function applyAntiSpam(message) {
 
   // Structural/Type-based filters using cached class names
   if (SETTINGS.hideItemConsumption) {
-    if (checkObjectContainsClassName(message, CLASSES['chat-message-happening_common'])) markAsSpam(message);
-    if (checkObjectContainsClassName(message, CLASSES['chat-message-happening_uncommon'])) markAsSpam(message);
-    if (checkObjectContainsClassName(message, CLASSES['chat-message-happening_rare'])) markAsSpam(message);
-    if (checkObjectContainsClassName(message, CLASSES['chat-message-happening_epic'])) markAsSpam(message);
+    if (checkObjectContainsClassName(message, CLASSES['chat-message-happening_item'])) markAsSpam(message);
   }
 
   if (SETTINGS.hideGrenades && checkObjectContainsClassName(message, CLASSES['chat-message-happening_catastrophe'])) {
