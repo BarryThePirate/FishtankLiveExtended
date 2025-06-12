@@ -44,3 +44,25 @@ Toggle what you want to be hidden in the chat. This feature only hides messages.
 Untested and experimental.
  - When an area exists on a video stream that you can click to add an item to your inventory, it pushes a system message to notify you
  - Automatially fix broken clickable zones
+
+<h1 align="center">Install From  GitHub</h1>
+If you want to develop the extension you will need to install it unpacked in your browser. If you already have it installed from the store, you'll need to disable that version.
+
+ - On GitHub, click Code → Download ZIP
+ - Extract the ZIP file
+
+## Chrome
+ - Open Chrome Extensions Page: Go to `chrome://extensions/` in your address bar or open the menu → Extensions → Manage Extensions
+ - If you have it installed from the Chrome store, disable that extension with the toggle button
+ - Turn on the "Developer mode" switch in the top-right corner of the page
+ - Click “Load unpacked”
+ - Select the root folder of the extension (the one that contains manifest.json)
+
+To test changes, you need to click the Reload button on the extension in the Manage Extensions page.
+
+## Firefox
+ - Go to `about:debugging#/runtime/this-firefox` in your address bar
+ - Click "Load Temporary Add-on"
+ - Select `manifest.json` within the root folder of the extension
+
+To test changes, you need to click the Reload button on the extension in the `about:debugging#/runtime/this-firefox` page.
