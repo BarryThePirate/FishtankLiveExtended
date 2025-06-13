@@ -203,13 +203,12 @@ function appendGridNamesToDropdown(names) {
  * Extracts live stream names from the grid and updates the dropdown options.
  */
 function getLiveStreamNames(grid) {
-  const streams = getAllObjectsFromClassNamePrefix('live-streams_live-stream', grid);
+  const streams = getAllObjectsFromClassNamePrefix('live-stream_name', grid);
   const names = [];
 
   streams.forEach(stream => {
-	const streamNameContainer = getObjectFromClassNamePrefix('live-stream_name', stream);
-    if (streamNameContainer && streamNameContainer.textContent && streamNameContainer.textContent !== "???") {
-      names.push(streamNameContainer.textContent.trim());
+    if (stream.textContent && stream.textContent !== "???") {
+      names.push(stream.textContent.trim());
     }
   });
 
