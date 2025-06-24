@@ -57,17 +57,17 @@ function logAdminMessage(id, header, message, type) {
   if (header) {
 	// If it isn't a string, change it to the innerHTML
 	header = typeof header === 'string' ? header : (header?.innerHTML || header);
-	lowerCaseHeader = typeof header === 'string' ? header.toLowerCase() : header;
+	lowerCaseHeader = typeof header === 'string' ? header.toLowerCase() : null;
   }
   
   if (message) {
 	// If it isn't a string, change it to the innerHTML
 	message = typeof message === 'string' ? message : (message?.innerHTML || message);
-	lowerCaseMessage = typeof message === 'string' ? message.toLowerCase() : message;
+	lowerCaseMessage = typeof message === 'string' ? message.toLowerCase() : null;
   }
 	
   // Don't log admin messages sent from this plugin
-  if (id.startsWith('ftl-ext')) return;
+  if (type && typeof type === 'string' && type == 'ftl-ext-admin-message') return;
   
   // Don't log season pass reminders
   if (lowerCaseMessage && (id == 'season-pass' || lowerCaseMessage == 'season-pass')) return;
@@ -211,8 +211,9 @@ function logTts(message) {
   const from = getObjectFromClassNamePrefix('chat-message-tts_from', message);
   const room = getObjectFromClassNamePrefix('chat-message-tts_room', message);
   const ttsMessage = getObjectFromClassNamePrefix('chat-message-tts_message', message);
+  const ttsVoice = getObjectFromClassNamePrefix('chat-message-tts_voice', message);
   
-  if (!from || !room || !ttsMessage) return;
+  if (!from || !room || !ttsMessage || !ttsVoice) return;
   
   let log = loadLog(TTS_LOG_KEY, true);
   if (!log) return;
@@ -220,6 +221,7 @@ function logTts(message) {
     from: from.innerHTML,
     room: room.innerHTML,
     message: ttsMessage.innerHTML,
+	voice: ttsVoice.innerHTML,
     timestamp: Date.now()
   });
   
@@ -233,4 +235,39 @@ function logTts(message) {
   }
   
   saveLog(log, TTS_LOG_KEY);
+}
+
+/**
+ * SFX logging
+ */
+function logSfx(message) {
+  if (SETTINGS.disableSfxLogging) return;
+  
+  if (!getClassNameFromObjectWithPrefix('chat-message-sfx_chat-message-sfx', message, false)) return;
+  
+  const from = getObjectFromClassNamePrefix('chat-message-sfx_from', message);
+  const room = getObjectFromClassNamePrefix('chat-message-sfx_room', message);
+  const sfxPrompt = getObjectFromClassNamePrefix('chat-message-sfx_message', message);
+  
+  if (!from || !room || !sfxPrompt ) return;
+  
+  let log = loadLog(SFX_LOG_KEY, true);
+  if (!log) return;
+  log.push({
+    from: from.innerHTML,
+    room: room.innerHTML,
+    sfxPrompt: sfxPrompt.innerHTML,
+    timestamp: Date.now()
+  });
+  
+  // Make sure the number isn't somehow higher than it should be
+  let numberOfMessages = SETTINGS.logSfxNumber;
+  if (numberOfMessages > SETTINGS.logSfxNumber.max) numberOfMessages = SETTINGS.logSfxNumber.max;
+  
+  // Keep only the last X number of messages (changed by user in settings)
+  if (log.length > numberOfMessages) {
+    log = log.slice(-numberOfMessages);
+  }
+  
+  saveLog(log, SFX_LOG_KEY);
 }

@@ -66,10 +66,10 @@ function checkObjectContainsClassName(object, className) {
  */
 function observeObject(object, then, passObjectIntoThen = false, disconnectObserverDuringThen = false) {
   // duplicate observer protection
-  let observer = OBJECT_OBSERVER_MAP.get(object);
+  let observer = CLASS_OBSERVER_MAP.get(object.getAttribute("class"));
   if (observer) {
 	observer.disconnect();
-    OBJECT_OBSERVER_MAP.delete(object);
+    CLASS_OBSERVER_MAP.delete(object.getAttribute("class"));
   }
 	
   observer = new MutationObserver(() => {
@@ -77,14 +77,14 @@ function observeObject(object, then, passObjectIntoThen = false, disconnectObser
 	passObjectIntoThen ? then(object) : then();
 	if (disconnectObserverDuringThen) {
 		// Reconnect observer
-		observer.observe(object, {
+	  observer.observe(object, {
 		childList: true,
 		subtree: true
 	  });
 	}
   });
   
-  OBJECT_OBSERVER_MAP.set(object, observer);
+  CLASS_OBSERVER_MAP.set(object.getAttribute("class"), observer);
 
   observer.observe(object, {
     childList: true,
@@ -98,7 +98,7 @@ function observeObjectForTarget(object, targetPrefix, then, stopObservingWhenFou
   const observer = new MutationObserver((mutations, obs) => {
 	const target = getObjectFromClassNamePrefix(targetPrefix, object);
     if (target) {
-      if (DEBUGGING) console.log(`[👀] Found the target`);
+      if (DEBUGGING) console.log(`[👀] Found the target - `+targetPrefix);
 	  if (stopObservingWhenFound) observer.disconnect();
 	  then(target);
     }
@@ -107,7 +107,7 @@ function observeObjectForTarget(object, targetPrefix, then, stopObservingWhenFou
 	if (!document.contains(object)) observer.disconnect();
   });
   
-  OBJECT_OBSERVER_MAP.set(object, observer);
+  CLASS_OBSERVER_MAP.set(object.getAttribute("class"), observer);
 
   observer.observe(object, {
     childList: true,
@@ -146,6 +146,31 @@ function observeAddedElements(object, callback, options = {}) {
   return observer;
 }
 
+function observeRootObjectClasses(object, then, passObjectIntoThen = false, disconnectObserverDuringThen = false) {
+  observer = new MutationObserver(() => {
+	if (disconnectObserverDuringThen) observer.disconnect();
+	passObjectIntoThen ? then(object) : then();
+	if (disconnectObserverDuringThen) {
+	    observer.observe(object, {
+	    attributes: true,
+	    attributeFilter: ['class'],
+	    attributeOldValue: true,
+	  });	
+	}
+  });
+
+  observer.observe(object, {
+    attributes: true,
+    attributeFilter: ['class'],
+    attributeOldValue: true,
+  });
+  
+  return observer;
+}
+
+/**
+ * General functions referenced in the other scripts
+ */
 function formatUnixTimestamp(timestamp) {
   const datetime = new Date(timestamp);
 
@@ -161,14 +186,19 @@ function formatUnixTimestamp(timestamp) {
 
 function getUsernameFromMessage(message) {
   const usernameContainer = getObjectFromClassNamePrefix('chat-message-default_user', message);
-  if (!usernameContainer) return;
+  if (! usernameContainer) return;
   
-  const username = Array.from(usernameContainer.childNodes)
+  let username = Array.from(usernameContainer.childNodes)
 	.filter(node => node.nodeType === Node.TEXT_NODE)
 	.map(node => node.textContent.trim())
 	.join("");
 	
-  if (!username) return;
+  if (! username) {
+	// If username has FTL Ext contributor custom styling
+	username = message.querySelector('.ftl-ext-text-pulser')?.textContent.trim();
+  }
+	
+  if (! username) return;
   return username;
 }
 
@@ -297,4 +327,192 @@ function usernameClicked(username) {
       dispatchChar(chatInput, ch);
     }
   }, 0);
+}
+
+function toggleVideoFullscreen() {
+  const vid = document.getElementById("hls-stream-player");
+  if (! vid) return;
+
+  // Toggle fullscreen
+  const fsElem = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+  if (fsElem === vid) {
+    // exit fullscreen
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+  } else {
+    // enter fullscreen
+    if (vid.requestFullscreen) vid.requestFullscreen();
+    else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+    else if (vid.mozRequestFullScreen) vid.mozRequestFullScreen();
+  }
+}
+
+function resizeVideo() {
+  const theatreMode = getObjectFromClassNamePrefix('live-stream-player_cinema');
+  const video = getObjectFromClassNamePrefix('live-stream-player_container');
+  const fullscreenButton = getObjectFromClassNamePrefix('live-stream-controls_live-stream-fullscreen');
+  const chat = getObjectFromClassNamePrefix('chat_chat');
+  let hideChatButton = document.querySelector('.ftl-ext-hide-chat-button');
+  let ftlExtButton = document.querySelector('.ftl-ext-settings-theatre-mode-button');
+  
+  if (fullscreenButton) {
+	if (SETTINGS.alwaysShowFullscreenButton) {
+	  fullscreenButton.classList.add('ftl-ext-fullscreen-button-show');
+	} else {
+	  fullscreenButton.classList.remove('ftl-ext-fullscreen-button-show');
+	}
+  }
+  
+  if (SETTINGS.theatreModeImproved && theatreMode) {
+	if (! hideChatButton) {
+	  // Add hide chat button (defaults to display: none)
+	  hideChatButton = fullscreenButton.cloneNode(true);
+	  hideChatButton.classList.remove('ftl-ext-fullscreen-button-show');
+	  hideChatButton.classList.add('ftl-ext-hide-chat-button');
+	  
+	  const iconHolder = hideChatButton.querySelector('div[class*="icon_icon"]');
+	  if (iconHolder) {
+		iconHolder.innerHTML = chat.style.zIndex === '2'? SVG_OPEN_CHAT : SVG_CLOSE_CHAT;
+	  }
+
+      hideChatButton.addEventListener('click', e => {
+        if (chat) {
+          chat.style.zIndex = chat.style.zIndex === '2' ? '7' : '2';
+		  iconHolder.innerHTML = chat.style.zIndex === '2'? SVG_OPEN_CHAT : SVG_CLOSE_CHAT;
+		  resizeVideo();
+        }
+      });
+
+	  fullscreenButton.after(hideChatButton);
+	}
+	if (hideChatButton) hideChatButton.style.setProperty('display', 'block', 'important');
+	
+	if (! ftlExtButton && SETTINGS.theatreModeFtlExtButton) {
+	  // Add hide chat button (defaults to display: none)
+	  ftlExtButton = fullscreenButton.cloneNode(true);
+	  ftlExtButton.classList.remove('ftl-ext-fullscreen-button-show');
+	  ftlExtButton.classList.add('ftl-ext-settings-theatre-mode-button');
+	  
+	  const iconHolder = ftlExtButton.querySelector('div[class*="icon_icon"]');
+	  if (iconHolder) {
+		iconHolder.innerHTML = SVG_SKULL_AND_CROSSBONES;
+	  }
+
+      ftlExtButton.addEventListener('click', e => {
+        openSettingsEditor();
+      });
+
+	   fullscreenButton.after(ftlExtButton);
+	} else if (! SETTINGS.theatreModeFtlExtButton && ftlExtButton) {
+	  ftlExtButton.style.display = 'none';
+	}
+	if (ftlExtButton && SETTINGS.theatreModeFtlExtButton) ftlExtButton.style.setProperty('display', 'block', 'important');
+	
+	if (chat) chat.classList.add('ftl-ext-theatre-mode-chat-box');
+
+    const theatreModeClass = getClassNameFromPrefix('live-stream-player_cinema', theatreMode);
+	
+	// If the chat is behind the video (hidden) then act like it has no width
+    let chatWidth = chat.getBoundingClientRect().width;
+	if (chat.style.zIndex === '2') chatWidth = 0;
+	
+    const windowW   = window.innerWidth;
+    const windowH   = window.innerHeight;
+  
+    // compute your available width
+    const availableW = windowW - chatWidth;
+  
+    // get the video’s natural aspect ratio
+    const aspectRatio = video.videoWidth
+  	  ? (video.videoWidth / video.videoHeight)
+  	  : (16 / 9); // fallback if metadata not loaded
+  
+    // set the width to fill that space…
+    const newW = availableW;
+    let newH = newW / aspectRatio;
+  
+    // don’t exceed the viewport’s height
+    if (newH > windowH) {
+  	  newH = windowH;
+    }
+    
+    if (! MOBILE) {
+  	  // Fix the terrible site CSS that stretches video heights when within a certain threshold
+  	  const override = document.createElement('style');
+  	  override.textContent = `
+  	    /* Force the video to letterbox inside that container */
+  	    .${theatreModeClass} video {
+  	  	  width:       100%    !important;
+  	  	  height:      auto    !important;
+  	  	  object-fit:  contain !important;
+  	    }
+  	  `;
+  	  document.head.appendChild(override);
+    }
+    
+    video.style.width  = Math.round(newW) + 'px';
+    if (DEBUGGING && video.style.width !== '100%') console.log(`→ video resized to ${video.style.width}`);
+  } else if (video) {
+    if (DEBUGGING &&  video.style.width !== '100%') console.log('Resetting video sizing to 100%');
+    video.style.width  = '100%';
+    video.style.margin = '';
+	if (hideChatButton) hideChatButton.style.display = 'none';
+	if (ftlExtButton) ftlExtButton.style.display = 'none';
+	if (chat) chat.classList.remove('ftl-ext-theatre-mode-chat-box');
+  }
+}
+
+function adminMessage(message, header = 'Fishtank Live Extended', id = null, duration = 5000) {
+  const type = 'ftl-ext-admin-message';
+  id = id ?? 'ftl-ext-admin-message';
+  id = id + '-' + Date.now();
+  
+  const adminMessage = new CustomEvent("toastopen", {
+    detail: JSON.stringify({
+      message,
+      header,
+      id,
+      duration,
+	  type,
+    })
+  });
+  document.dispatchEvent(adminMessage);
+}
+
+// Build a list of class prefixes to class with hashes e.g. chat_chat: chat_chat__2rdNg
+// This will be used in the future to replace custom styling with standardised site styling
+function buildCssModuleMap() {
+  const map = {};
+  // global regex: group1=moduleName, group2=localName, group3=hash
+  const re = /\.([A-Za-z0-9-]+)_([A-Za-z0-9-]+)__([A-Za-z0-9]+)/g;
+
+  for (const sheet of document.styleSheets) {
+    let rules;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue; // skip cross-origin sheets
+    }
+
+    for (const rule of rules) {
+      if (!(rule instanceof CSSStyleRule) || !rule.selectorText) continue;
+
+      let match;
+      // run the regex *globally* over the selectorText
+      while ((match = re.exec(rule.selectorText)) !== null) {
+        const [ , moduleName, localName, hash ] = match;
+        const fullClass = `${moduleName}_${localName}__${hash}`;
+        map[`${moduleName}_${localName}`] = fullClass;
+      }
+    }
+  }
+
+  CSS_MAP = map;
+}
+
+function removeWartoyVisuals() {
+  if (DEBUGGING) console.log('Removing wartoy effect');
+  const body = document.body;
+  body.classList.remove('mirror', 'blind');
 }

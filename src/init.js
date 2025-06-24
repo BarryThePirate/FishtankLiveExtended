@@ -73,6 +73,13 @@ loadRecipesFromRemote(RECIPE_URL).then(data => {
   CRAFTING_RECIPES = data;
 });
 
+function recordUsername (object) {
+  if (object.innerHTML !== '') {
+    USERNAME = object.innerHTML;
+	USER_ID = object.dataset.userId;
+  }
+}
+
 /**
  * Handlers for when new chat message appears
  */
@@ -82,13 +89,21 @@ function chatMessagesMutationObserved(message) {
   logStaffMessage(message);
   logPing(message);
   logTts(message);
+  logSfx(message);
   contributors(message);
 }
 
 function observeChatMessages() {
-	const object = document.getElementById('chat-messages');
-	if (object) observeAddedElements(object, chatMessagesMutationObserved);
+  const object = document.getElementById('chat-messages');
+  if (object) observeAddedElements(object, chatMessagesMutationObserved);
 }
+
+// Wait a couple of seconds for dom to render, then attach listener to chat box classes
+setTimeout(() => {
+  // TODO - think of way to put this into the below observers
+  const chatBox = getObjectFromClassNamePrefix('chat_chat');
+  if (chatBox) observeRootObjectClasses(chatBox, theatreModeCheck, true, true);
+}, 2000);
 
 /**
  * Run the observers to get the data we need and setup sub observers
@@ -109,7 +124,7 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'top-bar-user_dropdown',
 	then: createCustomButton,
-	stopObservingWhenFound: true,
+	stopObservingWhenFound: false,
   },
   {
 	// Anti-spam & filtering on new chat messages
@@ -153,20 +168,13 @@ const watchingFor = [
   },
 ];
 
-function recordUsername (object) {
-  if (object.innerHTML !== '') {
-    USERNAME = object.innerHTML;
-	USER_ID = object.dataset.userId;
-  }
-}
-
 const mainObserver = new MutationObserver(() => {
   watchingFor.forEach(find => {
     if (!find.parentName) {
       find.parentName = getClassNameFromPrefix(find.parentPrefix);
 	  const object = getObjectFromClassNamePrefix(find.parentPrefix);
 	  if (object) {
-		  observeObjectForTarget(object, find.targetPrefix, find.then, find.stopObservingWhenFound);
+		observeObjectForTarget(object, find.targetPrefix, find.then, find.stopObservingWhenFound);
 	  }
     }
   });
@@ -235,11 +243,10 @@ const modalActions = [
     then: displayCraftingRecipesForConsumeItem,
 	disconnectObserverDuringThen: true,
   },
-  // TODO - rethink this as it shouldn't do it if your clicking the season pass button or because you can't post in chat
-  /*{
+  {
     modal: 'Get Season Pass',
 	closeModal: true,
-  },*/
+  },
 ];
 
 document.addEventListener("modalopen", (e) => {
@@ -259,19 +266,35 @@ document.addEventListener("modalopen", (e) => {
   setTimeout(() => {
 	if (action.closeModal) {
 	  if (DEBUGGING) console.log('Closing modal: ' + action.modal);
-	  const closeEvent = new CustomEvent("modalclose");
-	  document.dispatchEvent(closeEvent);
+	  if (! SETTINGS.autoCloseSeasonPassPopup && action.modal === 'Get Season Pass') return;
+	  document.dispatchEvent(new CustomEvent("modalclose"));
 	  return;
 	}
 	  
     const object = document.getElementById('modal');
 	if (!object) return;
 	
+	if (parsed.modal == 'Global Mission') {
+	  const missionName = getObjectFromClassNamePrefix('global-mission-modal_name', object);
+	  if (missionName?.textContent.trim() === 'Think Fast!') {
+		if (SETTINGS.autoResolveThinkFastMission) {
+		  const missionButtons = getAllObjectsFromClassNamePrefix('button_button', object);
+		  missionButtons.forEach(missionButton => {
+		    const txt = missionButton.textContent.replace(/\s+/g, ' ').trim();
+		    if (txt === 'Gotcha!') {
+			  missionButton.click();
+			  adminMessage("'Think Fast!' Message Auto Solved");
+		    }
+		  });
+		}
+	  }
+    }
+	
 	if (action.before) action.before(object);
 
 	if (action.then) {
 	  const observer = observeObject(object, action.then, true, action.disconnectObserverDuringThen);
-	  OBJECT_OBSERVER_MAP.set(object, observer);
+	  CLASS_OBSERVER_MAP.set(object.getAttribute("class"), observer);
 	}
   }, 100);
 });
@@ -279,10 +302,10 @@ document.addEventListener("modalopen", (e) => {
 // Disconnect modal observer when closed
 document.addEventListener("modalclose", () => {
   const modal = document.getElementById('modal');
-  if (modal && OBJECT_OBSERVER_MAP.has(modal)) {
-    const observer = OBJECT_OBSERVER_MAP.get(modal);
+  if (modal && CLASS_OBSERVER_MAP.has(modal.getAttribute("class"))) {
+    const observer = CLASS_OBSERVER_MAP.get(modal.getAttribute("class"));
     observer.disconnect();
-    OBJECT_OBSERVER_MAP.delete(modal);
+    CLASS_OBSERVER_MAP.delete(modal.getAttribute("class"));
     if (DEBUGGING) console.log("🧹 Modal observer cleaned up");
   }
 });
@@ -313,3 +336,135 @@ document.addEventListener("toastopen", (e) => {
   
   logAdminMessage(parsed.id, parsed.header, parsed.message, parsed.type);
 });
+
+// Keydown event listener for custom functionality
+document.addEventListener("keydown", e => {
+  // Skip if focus is in an input/textarea or if modifier keys are down
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const active = document.activeElement;
+  if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) {
+    return;
+  }
+
+  if (e.key === "f" || e.key === "F") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+    toggleVideoFullscreen();
+  }
+  
+  if (e.key === "r" || e.key === "R") {
+	// Remove mirror and colour blind visuals
+    removeWartoyVisuals();
+  }
+  
+  /*if (e.key === "d" || e.key === "D") {
+    DEBUGGING = true;
+  }*/
+  
+  if (e.key === "e" || e.key === "E") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+    // Open Fishtank Live Extended settings editor
+    const ftlExtModelOpen = document.querySelector('.ftl-ext-settings-editor-container');
+    if (ftlExtModelOpen) {
+   	  document.dispatchEvent(new CustomEvent("modalclose"));
+    } else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+   	    openSettingsEditor();
+	  }, 50);
+    }
+  }
+  
+  if (e.key === "p" || e.key === "P") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+	// Open profile modal
+	const modalHeader = getObjectFromClassNamePrefix('modal_title');
+	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'settings') {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	} else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+	    document.dispatchEvent(new CustomEvent("modalopen", {
+	      detail: JSON.stringify({modal: "Settings", data: 'profile'})
+	    }));
+	  }, 50);
+	}
+	
+  }
+  
+  if (e.key === "n" || e.key === "N") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+	// Open notifications modal
+	const modalHeader = getObjectFromClassNamePrefix('modal_title');
+	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'notifications') {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	} else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+	    document.dispatchEvent(new CustomEvent("modalopen", {
+	      detail: JSON.stringify({modal: "Notifications"})
+	    }));
+	  }, 50);
+	}
+  }
+  
+  if (e.key === "b" || e.key === "B") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+	// Open blocked users modal
+	const modalHeader = getObjectFromClassNamePrefix('modal_title');
+	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'settings') {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	} else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+	    document.dispatchEvent(new CustomEvent("modalopen", {
+	      detail: JSON.stringify({modal: "Settings", data: 'mutes'})
+	    }));
+	  }, 50);
+	}
+  }
+  
+  if (e.key === "c" || e.key === "C") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+	// Open secret code modal
+	const modalHeader = getObjectFromClassNamePrefix('modal_title');
+	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'enter secret code') {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	} else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+	    document.dispatchEvent(new CustomEvent("modalopen", {
+	      detail: JSON.stringify({modal: "Enter Secret Code"})
+	    }));
+	  }, 50);
+	}
+  }
+  
+  if (e.key === "s" || e.key === "S") {
+	if (! SETTINGS.enableKeyboardShortcuts) return;
+	
+	// Open stox modal
+	const modalHeader = getObjectFromClassNamePrefix('modal_title');
+	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'stox') {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	} else {
+	  document.dispatchEvent(new CustomEvent("modalclose"));
+	  setTimeout(() => {
+	    document.dispatchEvent(new CustomEvent("modalopen", {
+	      detail: JSON.stringify({modal: "Stox"})
+	    }));
+	  }, 50);
+	}
+  }
+});
+
+window.addEventListener('resize', () => {
+  // Apply our custom resizing
+  resizeVideo();
+});
+
+const cssMap = buildCssModuleMap();

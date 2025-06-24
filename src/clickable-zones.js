@@ -12,7 +12,6 @@ function monitorMainPanelForPlayer() {
     // Avoid attaching multiple times
     if (video.dataset.listenerAttached) return;
     video.dataset.listenerAttached = 'true';
-
     video.addEventListener('playing', () => {
       const clickableZonesClass = getFullClassNameStartsWith(clickableZonesPrefix);
       if (clickableZonesClass) {
@@ -44,7 +43,7 @@ function monitorMainPanelForPlayer() {
       }
       return;
     }
-
+	
     if (!playerClass || !titleClass) return;
 
     const player = mainPanel.querySelector(`.${playerClass}`);

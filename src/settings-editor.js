@@ -77,7 +77,7 @@ function injectPluginSettingsIntoModal() {
   // 3) Change the modal title:
   const header = getObjectFromClassNamePrefix("modal_title");
   if (header) {
-    header.innerHTML = "Fishtank Live Extended Settings";
+    header.innerHTML = "Fishtank Live Extended Settings (E)";
   }
 
   // 4) Grab some stylesheet‐derived classnames to reuse later:
@@ -109,8 +109,8 @@ function injectPluginSettingsIntoModal() {
     adminMessageGroupContainer = null;
     pingsGroupContainer = null;
     ttsGroupContainer = null;
+    sfxGroupContainer = null;
 	
-
   const groupInputsMap = {};       // { groupName: [ wrapperDiv, … ] }
   const subGroupContainers = {};   // { groupName: { subGroupName: <div> } }
   const subGroupTabButtons = {};   // { groupName: { subGroupName: <button> } }
@@ -174,12 +174,6 @@ function injectPluginSettingsIntoModal() {
       });
       mainTabBar.appendChild(mainTabButton);
 
-      // In that groupDiv, add an <h2> header:
-      /*const groupHeader = document.createElement("h2");
-      groupHeader.textContent = def.group;
-      groupHeader.classList.add("ftl-ext-settings-group-header");
-      groupDiv.appendChild(groupHeader);*/
-
       // Create a sub‐tab‐bar area inside this group:
 	  let subTabBar;
 	  if (MOBILE) {
@@ -239,6 +233,9 @@ function injectPluginSettingsIntoModal() {
         }
 		if (grp === "Logging" && sub === "TTS") {
           ttsGroupContainer = subDiv;
+        }
+		if (grp === "Logging" && sub === "SFX") {
+          sfxGroupContainer = subDiv;
         }
       }
 
@@ -535,9 +532,66 @@ function injectPluginSettingsIntoModal() {
 	  
         const roomDiv = createEl("div", ["ftl-ext-admin-room"]);
         roomDiv.textContent = msg.room || "";
+		
+		const voiceDiv = createEl("div", ["ftl-ext-admin-voice"]);
+        voiceDiv.textContent = msg.voice || "";
 	  
         const textDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
         textDiv.textContent = msg.message || "";
+	  
+        const fromSpan = createEl("span", ["ftl-ext-clickable-username"]);
+		msg.from = typeof msg.from === 'string' ? msg.from.trim() : null;
+        fromSpan.textContent = msg.from ? "@" + msg.from : "";
+        fromSpan.addEventListener("click", () => usernameClicked(msg.from));
+	  
+	    if (MOBILE) {
+		  body.append(roomDiv, voiceDiv, textDiv, fromSpan, timestampDiv);
+          inner.append(body);
+		} else {
+          body.append(roomDiv, voiceDiv, textDiv, fromSpan);
+          inner.append(timestampDiv, body);
+		}
+        wrapper.appendChild(inner);
+        container.appendChild(wrapper);
+      });
+    },
+    [staffWrapperClass]
+  );
+  
+  // ─── SFX ──────────────────────────────────────────────────────────────
+  setupLogPanel(
+    sfxGroupContainer,
+	SFX_LOG_KEY,
+    "logSfxOrderAsc",
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-admin-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-admin-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+		let timestampDiv;
+		let bodyWrapper;
+		let body;
+		if (MOBILE) {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container-mobile"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container-mobile"]);
+		  body = createEl("div", ["ftl-ext-admin-body-container-mobile"]);
+		} else {
+		  timestampDiv = createEl("div", ["ftl-ext-admin-timestamp-container"]);
+		  bodyWrapper = createEl("div", ["ftl-ext-admin-body-container"]);
+		  body = createEl("div", ["ftl-ext-admin-body-container"]);
+		}
+		
+		timestampDiv.innerHTML = formatUnixTimestamp(msg.timestamp);
+	  
+        const roomDiv = createEl("div", ["ftl-ext-admin-room"]);
+        roomDiv.textContent = msg.room || "";
+		
+		//const voiceDiv = createEl("div", ["ftl-ext-admin-voice"]);
+        //voiceDiv.textContent = msg.voice || "";
+	  
+        const textDiv = createEl("div", ["ftl-ext-admin-message-container-message-container"]);
+        textDiv.textContent = msg.sfxPrompt || "";
 	  
         const fromSpan = createEl("span", ["ftl-ext-clickable-username"]);
 		msg.from = typeof msg.from === 'string' ? msg.from.trim() : null;
@@ -648,7 +702,7 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
 
   // Sort button + state
   let isAscending = Boolean(SETTINGS[orderSettingKey]);
-  let currentRoom   = "";
+  let currentRoom = "";
   const allMessages = () => loadLog(logKey, isAscending) || [];
   const iconClass = "ftl-ext-svg-button";
   const orderBtn = createEl("button", ["ftl-ext-svg-button"]);
@@ -662,9 +716,9 @@ function setupLogPanel(mountPoint, logKey, orderSettingKey, renderFn, wrapperCla
     renderPanel();
   });
   
-  // If it's the TTS log, event listener for dropdown change
+  // If it's the TTS/SFX log, event listener for dropdown change
   let filterSelect = null;
-  if (orderSettingKey === "logTtsOrderAsc") {
+  if (orderSettingKey === "logTtsOrderAsc" || orderSettingKey === "logSfxOrderAsc") {
 	const downURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_DOWN_ARROW_MINI.trim());
 	const upURI = "data:image/svg+xml;utf8," + encodeURIComponent(SVG_UP_ARROW_MINI.trim());
     if (MOBILE) {
@@ -839,19 +893,7 @@ function createCustomButton() {
       openDropdown.classList.remove(getClassNameFromPrefix("top-bar-user_show"));
     }
 
-    // Open a bare “Tip” modal
-    document.dispatchEvent(new CustomEvent("modalopen", {
-      detail: JSON.stringify({ modal: "Tip", data: [] })
-    }));
-
-    // After 100ms, inject our settings UI
-    setTimeout(() => {
-      const modalElem = document.getElementById("modal");
-      if (!modalElem) return;
-      injectPluginSettingsIntoModal();
-      // Watch for any dynamically added <div class="input_input-wrapper"> inside the modal
-      observeObjectForTarget(modalElem, "input_input-wrapper", injectPluginSettingsIntoModal, false);
-    }, 100);
+    openSettingsEditor();
   });
 
   // Insert before “Billing” in the user dropdown, or append at end
@@ -866,6 +908,21 @@ function createCustomButton() {
   }
 }
 
+function openSettingsEditor() {
+  // Open a bare “Tip” modal
+  document.dispatchEvent(new CustomEvent("modalopen", {
+    detail: JSON.stringify({ modal: "Tip", data: [] })
+  }));
+  
+  // After 100ms, inject our settings UI
+  setTimeout(() => {
+    const modalElem = document.getElementById("modal");
+    if (!modalElem) return;
+    injectPluginSettingsIntoModal();
+    // Watch for any dynamically added <div class="input_input-wrapper"> inside the modal
+    observeObjectForTarget(modalElem, "input_input-wrapper", injectPluginSettingsIntoModal, false);
+  }, 100);
+}
 
 // ============================
 //  INITIALIZE

@@ -32,6 +32,7 @@ function updateActiveClass() {
 }
 
 function filter(message) {
+  if (USERNAME && getUsernameFromMessage(message) === USERNAME) return;
   message.style.display = 'none';
   message.classList.add('ftl-ext-filtered');
 }
@@ -100,20 +101,30 @@ function applyChatFilter(message) {
   // If allowPings and user has been mentioned, don't filter chat message
   if (SETTINGS.allowPings && mentioned) return;
 
-  //If filterSfx, apply filtering to SFX chat message
-  const sfxRoom = getObjectFromClassNamePrefix('chat-message-sfx_room', message);
-  if (SETTINGS.filterSfx && sfxRoom) {
-	(sfxRoom.textContent.trim().toLowerCase() !== selected) ? filter(message) : unfilter(message);
-  }
-
   //If filterTts, apply filtering to TTS chat message
   const ttsRoom = getObjectFromClassNamePrefix('chat-message-tts_room', message);
   if (SETTINGS.filterTts && ttsRoom) {
-	(ttsRoom.textContent.trim().toLowerCase() !== selected) ? filter(message) : unfilter(message);
+	if (ttsRoom.textContent.trim().toLowerCase() !== selected) {
+	  filter(message);
+	} else {
+	  unfilter(message);
+	  return;
+	}
+  }
+  
+  //If filterSfx, apply filtering to SFX chat message
+  const sfxRoom = getObjectFromClassNamePrefix('chat-message-sfx_room', message);
+  if (SETTINGS.filterSfx && sfxRoom) {
+	if (sfxRoom.textContent.trim().toLowerCase() !== selected) {
+	  filter(message);
+	} else {
+	  unfilter(message);
+	  return;
+	}
   }
 
   if (selected === 'all') {
-    unfilter(message)
+    unfilter(message);
   } else if (selected === 'not watching') {
     timestampText.includes(' @') ? filter(message) : unfilter(message);
   } else {
@@ -181,6 +192,9 @@ function appendGridNamesToDropdown(names) {
 	  
 	  // Simulate click to close dropdown
       if (toggleButton) toggleButton.click();
+	  
+	  // Unhide all filtered chat
+	  resetChatFilter();
 	  
 	  // Apply chat filtering
       applyChatFilterToAll();

@@ -25,6 +25,7 @@ function resetAntiSpam() {
 
 function applyAntiSpam(message) {
   if (SETTINGS.disableAntiSpam) return;
+  if (USERNAME && getUsernameFromMessage(message) === USERNAME) return;
   
   const prefixes = [
     'chat-message-happening_item',

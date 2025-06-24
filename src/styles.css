@@ -5,13 +5,6 @@
   /*gap: 10px;*/
 }
   
-.ftl-ext-settings-group-header {
-  margin-top: 20px;
-  text-align: center;
-  padding-bottom: 30px;
-  color: #fff;
-}
-  
 .ftl-ext-tab-controls {
   display: flex;
   /*margin-bottom: 15px;*/
@@ -214,6 +207,7 @@
 
 .ftl-ext-admin-message-container-message-container {
   opacity: 0.85;
+  word-wrap: break-word;
 }
   
 .ftl-ext-admin-timestamp-container {
@@ -276,6 +270,11 @@
   font-weight: bold;
   margin-bottom: 6px;
   color: #5ff;
+}
+
+.ftl-ext-admin-voice {
+  margin-bottom: 6px;
+  color: #666;
 }
 
 .ftl-ext-craft-search-wrapper {
@@ -466,4 +465,37 @@
 
 .ftl-ext-text-pulser {
   animation: ftl-ext-text-pulse 5s ease infinite alternate-reverse;
+}
+
+.ftl-ext-clickable-zone-hidden {
+  cursor: pointer;
+}
+
+.ftl-ext-clickable-zone-hidden:hover {
+  fill: #F8EC9426;
+}
+
+.ftl-ext-theatre-mode-chat-box {
+  background-color: #191d21 !important;
+}
+
+.ftl-ext-hide {
+  display: none !important;
+}
+
+.ftl-ext-fullscreen-button-show {
+  display: block !important;
+  position: absolute;
+  margin-right: 1.75rem;
+}
+
+.ftl-ext-hide-chat-button {
+  display: none;
+  position: absolute;
+}
+
+.ftl-ext-settings-theatre-mode-button {
+  display: none;
+  position: absolute;
+  margin-right: 3.75rem;
 }
