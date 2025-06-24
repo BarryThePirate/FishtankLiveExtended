@@ -23,7 +23,7 @@ Many settings are off by default, especially if experimental.
 
 ## General
  - Improved Theatre Mode: moves chat to right of video instead of in front, button to toggle chat
- - Keyboard shortcuts -- F: Fullscreen, E: FTL Extended Settings, N: Notifications, P: Profile, B: Blocked Users, C: Secret Code, S: StoX
+ - Keyboard shortcuts -- F: Fullscreen, E: FTL Extended Settings, N: Notifications, P: Profile, B: Blocked Users, S: StoX
  - Automatically resolve the 'Think Fast' mission
  - Automatically close the season pass popup
 
