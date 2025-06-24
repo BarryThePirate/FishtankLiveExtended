@@ -21,6 +21,12 @@ Many settings are off by default, especially if experimental.
  - Click profile picture to open the dropdown
  - Click "FLT Extended" to open the settings
 
+## General
+ - Improved Theatre Mode: moves chat to right of video instead of in front, button to toggle chat
+ - Keyboard shortcuts -- F: Fullscreen, E: FTL Extended Settings, N: Notifications, P: Profile, B: Blocked Users, C: Secret Code, S: StoX
+ - Automatically resolve the 'Think Fast' mission
+ - Automatically close the season pass popup
+
 ## Anti-Spam
 Toggle what you want to be hidden in the chat. This feature only hides messages. (It does not add or remove messages from the chat box, so the max chat length still applies)
 
@@ -39,6 +45,7 @@ Toggle what you want to be hidden in the chat. This feature only hides messages.
  - Logs chat message from staff members that have the staff message styling and the staff picture as their profile picture
  - Logs each ping you recieve
  - Logs TTS sent by other users and has a dropdown to filter to a specific room
+ - Logs SFX sent by other users and has a dropdown to filter to a specific room
 
 ## Clickable Zones
 Untested and experimental.
