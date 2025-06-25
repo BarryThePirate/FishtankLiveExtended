@@ -358,7 +358,7 @@ function resizeVideo() {
   
   if (fullscreenButton) {
 	if (SETTINGS.alwaysShowFullscreenButton) {
-	  fullscreenButton.classList.add('ftl-ext-fullscreen-button-show');
+	  if (! MOBILE) fullscreenButton.classList.add('ftl-ext-fullscreen-button-show');
 	} else {
 	  fullscreenButton.classList.remove('ftl-ext-fullscreen-button-show');
 	}

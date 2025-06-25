@@ -427,23 +427,6 @@ document.addEventListener("keydown", e => {
 	}
   }
   
-  if (e.key === "c" || e.key === "C") {
-	if (! SETTINGS.enableKeyboardShortcuts) return;
-	
-	// Open secret code modal
-	const modalHeader = getObjectFromClassNamePrefix('modal_title');
-	if (modalHeader && modalHeader?.innerText?.trim().toLowerCase() === 'enter secret code') {
-	  document.dispatchEvent(new CustomEvent("modalclose"));
-	} else {
-	  document.dispatchEvent(new CustomEvent("modalclose"));
-	  setTimeout(() => {
-	    document.dispatchEvent(new CustomEvent("modalopen", {
-	      detail: JSON.stringify({modal: "Enter Secret Code"})
-	    }));
-	  }, 50);
-	}
-  }
-  
   if (e.key === "s" || e.key === "S") {
 	if (! SETTINGS.enableKeyboardShortcuts) return;
 	

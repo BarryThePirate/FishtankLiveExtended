@@ -229,7 +229,7 @@ const settingDefinitions = [
   {
     key: "enableKeyboardShortcuts",
     group: "General",
-    displayName: "Enable Keyboard Shortcuts [F, E, N, P, B, C, S]",
+    displayName: "Enable Keyboard Shortcuts [F, E, N, P, B, S]",
     type: "boolean",
     defaultValue: true,
   },
