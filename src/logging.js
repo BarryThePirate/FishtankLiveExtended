@@ -67,7 +67,7 @@ function logAdminMessage(id, header, message, type) {
   }
 	
   // Don't log admin messages sent from this plugin
-  if (type && typeof type === 'string' && type == 'ftl-ext-admin-message') return;
+  //if (type && typeof type === 'string' && type == 'ftl-ext-admin-message') return;
   
   // Don't log season pass reminders
   if (lowerCaseMessage && (id == 'season-pass' || lowerCaseMessage == 'season-pass')) return;
@@ -96,8 +96,10 @@ function logAdminMessage(id, header, message, type) {
   // Don't log polls started
   if (!SETTINGS.logAdminMessagesNewPollStarted && lowerCaseMessage && lowerCaseMessage.includes('new poll has started')) return;
   
-  // Don't log error messages
-  if (!SETTINGS.logAdminMessagesError && type && type == 'error') return;
+  // Don't log items added to inventory messages
+  if (!SETTINGS.logAdminMessagesFishToy 
+    && lowerCaseHeader
+	&& lowerCaseHeader.includes('fish toy')) return;
   
   // Don't log tips sent/recieved
   if (!SETTINGS.logAdminMessagesTips && lowerCaseMessage && (lowerCaseMessage.startsWith("you spent ₣") || lowerCaseMessage.startsWith("you received ₣"))) return;

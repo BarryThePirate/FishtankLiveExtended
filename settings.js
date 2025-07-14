@@ -459,10 +459,10 @@ const settingDefinitions = [
     defaultValue: true,
   },
   {
-    key: "logAdminMessagesError",
+    key: "logAdminMessagesFishToy",
     group: "Logging",
 	subGroup: "Admin Messages",
-    displayName: "Log Error Messages",
+    displayName: "Log Fish Toy Messages",
     type: "boolean",
     defaultValue: true,
   },
