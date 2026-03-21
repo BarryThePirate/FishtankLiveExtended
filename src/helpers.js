@@ -515,4 +515,9 @@ function removeWartoyVisuals() {
   if (DEBUGGING) console.log('Removing wartoy effect');
   const body = document.body;
   body.classList.remove('mirror', 'blind');
+  const player = getObjectFromClassNamePrefix('live-stream-player_live-stream-player');
+  player.classList.remove(
+    getClassNameFromObjectWithPrefix('live-stream-player_blur', player),
+    getClassNameFromObjectWithPrefix('live-stream-player_upside-down', player)
+  );
 }

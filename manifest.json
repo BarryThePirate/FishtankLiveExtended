@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fishtank Live Extended",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "An open source project aimed at extending functionality on fishtank.live",
   "permissions": [],
   "icons": {
@@ -11,7 +11,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.fishtank.live/*"],
+      "matches": ["*://classic.fishtank.live/*"],
 	  "css": ["src/styles.css"],
       "js": [
         "settings.js",

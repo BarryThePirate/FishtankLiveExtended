@@ -1,13 +1,36 @@
 function markAsSpam(message) {
-  message.style.display = 'none';
-  message.classList.add('ftl-ext-spam');
+  setTimeout(() => {
+    const contents = getObjectFromClassNamePrefix('chat-message-default_chat-message-default', message);
+    contents.style.display = 'none';
+	contents.style.setProperty('height', '0', 'important');
+  
+    message.classList.add('ftl-ext-spam');
+    message.style.setProperty('padding', '0', 'important');
+	message.style.setProperty('height', '0', 'important');
+	
+	const row = document.querySelector('.ftl-ext-spam'); // or any selector you use
+	console.log("ROW rect height:", row.getBoundingClientRect().height);
+	console.log("ROW computed height:", getComputedStyle(row).height);
+	console.log("ROW inline style:", row.getAttribute("style"));
+
+	// and also measure the inner chatMessage div
+	const inner = row.querySelector('[id^="chatMessage-"]');
+	console.log("INNER rect height:", inner?.getBoundingClientRect().height);
+	console.log("INNER computed display:", inner ? getComputedStyle(inner).display : null);
+	window.dispatchEvent(new Event('resize'));
+  }, 200);
 }
 
 function resetAntiSpam() {
-	if (DEBUGGING) console.log('Resetting anti-spam');
+	/*if (DEBUGGING) console.log('Resetting anti-spam');
 	
 	// Loop through all chat messages
-	const chat = document.getElementById("chat-messages");
+	var chat = document.getElementById("chat-messages");
+	
+	// Chat message now sit within a div inside that div. If that exists, use it instead
+	const listDiv = chat.querySelector('div[role="list"]');
+	if (listDiv) { chat = listDiv; console.log('list div'); }
+	
 	if (chat) {
 		chat.childNodes.forEach(message => {
 			// Remove spam class, unhide and re-run anti-spam logic
@@ -20,7 +43,8 @@ function resetAntiSpam() {
 	
 	// Scroll to the bottom after applying new anti-spam settings to chat
 	const chatMessagesContainer = document.getElementById('chat-messages');
-	chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+	
+	chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;*/
 }
 
 function applyAntiSpam(message) {

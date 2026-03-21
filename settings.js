@@ -3,13 +3,16 @@
   */
 let DEBUGGING = false;
 let MOBILE = false;
+let IRC_MODE = false;
 const SETTINGS_STORAGE_KEY = "ftl-ext-plugin-settings";
 const ADMIN_MESSAGE_LOG_KEY = "ftl-ext-admin-message-log";
 const STAFF_MESSAGE_LOG_KEY = "ftl-ext-staff-message-log";
+const FISH_MESSAGE_LOG_KEY = "ftl-ext-fish-message-log";
+const MOD_MESSAGE_LOG_KEY = "ftl-ext-mod-message-log";
 const PINGS_LOG_KEY = "ftl-ext-pings-log";
 const TTS_LOG_KEY = "ftl-ext-tts-log";
 const SFX_LOG_KEY = "ftl-ext-sfx-log";
-const RECIPE_URL = "https://barrythepirate.github.io/recipes.b64?nocache=" + Date.now();
+const RECIPE_URL = "https://fishtank.guru/resources/recipes.json";
 let USERNAME;
 let USER_ID;
 let CRAFTING_RECIPES;
@@ -233,159 +236,6 @@ const settingDefinitions = [
     type: "boolean",
     defaultValue: true,
   },
- 
- /**
-  * Anti-Spam Settings
-  */
-  {
-    key: "disableAntiSpam",
-    group: "Anti-Spam",
-    displayName: "Disable All Anti-Spam",
-    type: "boolean",
-    defaultValue: false,
-	onChange: () => resetAntiSpam(),
-	groupToggler: true,
-  },
-  {
-    key: "hideChatMessageLength",
-    group: "Anti-Spam",
-    displayName: "Hide Messages Over Length (Max 200)",
-    type: "number",
-	min: 1,
-	max: 200,
-    defaultValue: 200,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "filterChatMessagesContaining",
-    group: "Anti-Spam",
-    displayName: "Hide Messages Containing",
-    type: "text-array",
-    defaultValue: [],
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "filterChatMessagesExact",
-    group: "Anti-Spam",
-    displayName: "Hide Messages Exactly Matching",
-    type: "text-array",
-    defaultValue: [],
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideItemConsumption",
-    group: "Anti-Spam",
-    displayName: "Hide Item Consumption",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideGrenades",
-    group: "Anti-Spam",
-    displayName: "Hide Grenades (Doesn't Mute Audio)",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideEmotes",
-    group: "Anti-Spam",
-    displayName: "Hide Emotes",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideStocks",
-    group: "Anti-Spam",
-    displayName: "Hide Stox",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideSfx",
-    group: "Anti-Spam",
-    displayName: "Hide SFX",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideTts",
-    group: "Anti-Spam",
-    displayName: "Hide TTS",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hidePoors",
-    group: "Anti-Spam",
-    displayName: "Hide Poors (Grey Texters)",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-  {
-    key: "hideClans",
-    group: "Anti-Spam",
-    displayName: "Hide Clan Notifications",
-    type: "boolean",
-    defaultValue: false,
-    onChange: () => resetAntiSpam(),
-  },
-
- /**
-  * Chat Filter Settings
-  */
-  {
-    key: "disableFiltering",
-    group: "Chat Filters",
-    displayName: "Disable All Chat Filtering (Requires Refresh)",
-    type: "boolean",
-    defaultValue: false,
-	groupToggler: true,
-  },
-  {
-    key: "autoApplyChatFilters",
-    group: "Chat Filters",
-    displayName: "Auto Apply Chat Filters When Viewing Streams",
-    type: "boolean",
-    defaultValue: false,
-  },
-  {
-    key: "enableChatDropdownIfDisabled",
-    group: "Chat Filters",
-    displayName: "Re-enable Dropdown if Disabled (EXPERIMENTAL FEATURE, Requires Refresh)",
-    type: "boolean",
-    defaultValue: false,
-  },
-  {
-    key: "allowPings",
-    group: "Chat Filters",
-    displayName: "Always Show When You're @'ed (Doesn't Mute Audio)",
-    type: "boolean",
-    defaultValue: true,
-	onChange: () => resetChatFilter(),
-  },
-  {
-    key: "filterSfx",
-    group: "Chat Filters",
-    displayName: "Apply Filter to SFX Chat Messages",
-    type: "boolean",
-    defaultValue: false,
-	onChange: () => resetChatFilter(),
-  },
-  {
-    key: "filterTts",
-    group: "Chat Filters",
-    displayName: "Apply Filter to TTS Chat Messages",
-    type: "boolean",
-    defaultValue: false,
-	onChange: () => resetChatFilter(),
-  },
   
  /**
   * Item Crafting
@@ -412,74 +262,92 @@ const settingDefinitions = [
   {
     key: "disableAdminMessageLogging",
     group: "Logging",
-	subGroup: "Admin Messages",
+	subGroup: "Admin",
     displayName: "Disable Admin Message Logging",
     type: "boolean",
     defaultValue: false,
 	groupToggler: true,
   },
   {
-    key: "logAdminMessagesLevelUpsMissionsMedals",
+    key: "logAdminMessagesWordFilter",
     group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log 'Level Up'/'Mission'/'Medal Earned' Messages",
-    type: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "logAdminMessagesFoundItem",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log 'Found an Item' Messages",
-    type: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "logAdminMessagesNewPollStarted",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log 'New Poll Started' Messages",
-    type: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "logAdminMessagesGiftedSeasonPasses",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log Gifted Season Passes",
-    type: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "logAdminMessagesTips",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log Tips Sent/Received",
-    type: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "logAdminMessagesFishToy",
-    group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Log Fish Toy Messages",
-    type: "boolean",
-    defaultValue: true,
+    displayName: "Don't Log Admin Messages Containing",
+    type: "text-array",
+    defaultValue: [],
+    onChange: () => resetAntiSpam(),
   },
   {
     key: "logAdminMessagesNumber",
     group: "Logging",
-	subGroup: "Admin Messages",
-    displayName: "Admin Message Log Size (Max 200)",
+	subGroup: "Admin",
+    displayName: "Admin Message Log Size (Max 1000)",
     type: "number",
 	min: 1,
-	max: 200,
-    defaultValue: 50,
+	max: 1000,
+    defaultValue: 200,
   },
   {
     key: "logAdminMessagesOrderAsc",
     group: "Logging",
-	subGroup: "Admin Messages",
+	subGroup: "Admin",
+    displayName: "",
+    type: "order",
+    defaultValue: false,
+  },
+  
+  // Fish Message Logging
+  {
+    key: "disableFishMessageLogging",
+    group: "Logging",
+	subGroup: "Fish",
+    displayName: "Disable Fish Message Logging",
+    type: "boolean",
+    defaultValue: false,
+	groupToggler: true,
+  },
+  {
+    key: "logFishMessagesNumber",
+    group: "Logging",
+	subGroup: "Fish",
+    displayName: "Fish Message Log Size (Max 1000)",
+    type: "number",
+	min: 1,
+	max: 1000,
+    defaultValue: 200,
+  },
+  {
+    key: "logFishMessagesOrderAsc",
+    group: "Logging",
+	subGroup: "Fish",
+    displayName: "",
+    type: "order",
+    defaultValue: false,
+  },
+  
+  // Mod Message Logging
+  {
+    key: "disableModMessageLogging",
+    group: "Logging",
+	subGroup: "Mod",
+    displayName: "Disable Mod Message Logging",
+    type: "boolean",
+    defaultValue: false,
+	groupToggler: true,
+  },
+  {
+    key: "logModMessagesNumber",
+    group: "Logging",
+	subGroup: "Mod",
+    displayName: "Mod Message Log Size (Max 1000)",
+    type: "number",
+	min: 1,
+	max: 1000,
+    defaultValue: 200,
+  },
+  {
+    key: "logModMessagesOrderAsc",
+    group: "Logging",
+	subGroup: "Mod",
     displayName: "",
     type: "order",
     defaultValue: false,
@@ -490,7 +358,7 @@ const settingDefinitions = [
   {
     key: "disableStaffMessageLogging",
     group: "Logging",
-	subGroup: "Staff Messages",
+	subGroup: "Staff",
     displayName: "Disable Staff Message Logging",
     type: "boolean",
     defaultValue: false,
@@ -499,17 +367,17 @@ const settingDefinitions = [
   {
     key: "logStaffMessagesNumber",
     group: "Logging",
-	subGroup: "Staff Messages",
-    displayName: "Staff Message Log Size (Max 200)",
+	subGroup: "Staff",
+    displayName: "Staff Message Log Size (Max 1000)",
     type: "number",
 	min: 1,
-	max: 200,
-    defaultValue: 50,
+	max: 1000,
+    defaultValue: 200,
   },
   {
     key: "logStaffMessagesOrderAsc",
     group: "Logging",
-	subGroup: "Staff Messages",
+	subGroup: "Staff",
     displayName: "",
     type: "order",
     defaultValue: false,
@@ -529,11 +397,11 @@ const settingDefinitions = [
     key: "logPingsNumber",
     group: "Logging",
 	subGroup: "Pings",
-    displayName: "Pings Log Size (Max 200)",
+    displayName: "Pings Log Size (Max 1000)",
     type: "number",
 	min: 1,
-	max: 200,
-    defaultValue: 50,
+	max: 1000,
+    defaultValue: 200,
   },
   {
     key: "logPingsOrderAsc",
@@ -558,11 +426,11 @@ const settingDefinitions = [
     key: "logTtsNumber",
     group: "Logging",
 	subGroup: "TTS",
-    displayName: "TTS Log Size (Max 200)",
+    displayName: "TTS Log Size (Max 1000)",
     type: "number",
 	min: 1,
-	max: 200,
-    defaultValue: 50,
+	max: 1000,
+    defaultValue: 200,
   },
   {
     key: "logTtsOrderAsc",
@@ -587,11 +455,11 @@ const settingDefinitions = [
     key: "logSfxNumber",
     group: "Logging",
 	subGroup: "SFX",
-    displayName: "SFX Log Size (Max 200)",
+    displayName: "SFX Log Size (Max 1000)",
     type: "number",
 	min: 1,
-	max: 200,
-    defaultValue: 50,
+	max: 1000,
+    defaultValue: 200,
   },
   {
     key: "logSfxOrderAsc",

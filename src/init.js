@@ -19,6 +19,9 @@ function loadSettings() {
       : def.defaultValue;
   }
 
+  settings.disableAntiSpam = true;
+  settings.disableFiltering = true;
+  
   return settings;
 }
 SETTINGS = loadSettings();
@@ -59,8 +62,8 @@ if (screen.width < 800) MOBILE = true;
 async function loadRecipesFromRemote(url) {
   try {
     const response = await fetch(url);
-    const base64Text = await response.text();
-	return JSON.parse(atob(base64Text));
+    const responseText = await response.text();
+	return JSON.parse(responseText);
   } catch (err) {
     console.error("Failed to load or decode recipes:", err);
 	console.warn('Using offline version of recipes (may be outdated)');
@@ -84,8 +87,10 @@ function recordUsername (object) {
  * Handlers for when new chat message appears
  */
 function chatMessagesMutationObserved(message) {
-  applyAntiSpam(message);
-  applyChatFilter(message);
+  //applyAntiSpam(message);
+  //applyChatFilter(message);
+  logFishMessage(message);
+  logModMessage(message);
   logStaffMessage(message);
   logPing(message);
   logTts(message);
@@ -95,7 +100,13 @@ function chatMessagesMutationObserved(message) {
 
 function observeChatMessages() {
   const object = document.getElementById('chat-messages');
-  if (object) observeAddedElements(object, chatMessagesMutationObserved);
+  if (object) observeAddedElements(object, chatMessagesMutationObserved, {subtree: true});
+}
+
+function createIrcButton() {
+	if (MOBILE) return;
+	const object = getObjectFromClassNamePrefix('chat_header');
+	
 }
 
 // Wait a couple of seconds for dom to render, then attach listener to chat box classes
@@ -132,6 +143,14 @@ const watchingFor = [
 	parentName: null,
 	targetPrefix: 'chat-messages_chat-messages',
 	then: observeChatMessages,
+	stopObservingWhenFound: true,
+  },
+  {
+	// Add IRC button to chat header
+	parentPrefix: 'chat_chat',
+	parentName: null,
+	targetPrefix: 'chat_header',
+	then: createIrcButton,
 	stopObservingWhenFound: true,
   },
   {
@@ -190,9 +209,9 @@ const mainObserver = new MutationObserver(() => {
 const observerTimeout = setTimeout(() => {
   if (mainObserver) {
     mainObserver.disconnect();
-    console.warn("[⏱️] FTL EXT Main observer timed out after 30s. Some features may not be initialized.");
+    console.warn("[⏱️] FTL EXT Main observer timed out after 60s. Some features may not be initialized.");
   }
-}, 30000);
+}, 60000);
 
 mainObserver.observe(document.body, {
   childList: true,
@@ -331,8 +350,20 @@ document.addEventListener("toastopen", (e) => {
       });
 
       document.dispatchEvent(event);
-    }, 100);
+    }, 0);
   }
+  
+  /*if (parsed.header && parsed.header.toLowerCase().includes('incoming fish toy')) {
+	setTimeout(() => {
+      const event = new CustomEvent("toastclose", {
+        detail: JSON.stringify({
+          "id": parsed.id
+        })
+      });
+	  
+      document.dispatchEvent(event);
+    }, 0);
+  }*/
   
   logAdminMessage(parsed.id, parsed.header, parsed.message, parsed.type);
 });

@@ -105,6 +105,8 @@ function injectPluginSettingsIntoModal() {
     currentGroupName = "",
     currentGroupContainer = null,
     craftingGroupContainer = null,
+    fishMessageGroupContainer = null,
+    modMessageGroupContainer = null,
     staffMessageGroupContainer = null,
     adminMessageGroupContainer = null;
     pingsGroupContainer = null;
@@ -221,11 +223,17 @@ function injectPluginSettingsIntoModal() {
 		}
         subGroupTabButtons[grp][sub] = subBtn;
 
-        // If it’s Logging→“Staff Messages” or “Admin Messages”, store for later:
-        if (grp === "Logging" && sub === "Staff Messages") {
+        // If it’s Logging→Staff or Admin, store for later:
+		if (grp === "Logging" && sub === "Fish") {
+          fishMessageGroupContainer = subDiv;
+        }
+		if (grp === "Logging" && sub === "Mod") {
+          modMessageGroupContainer = subDiv;
+        }
+        if (grp === "Logging" && sub === "Staff") {
           staffMessageGroupContainer = subDiv;
         }
-        if (grp === "Logging" && sub === "Admin Messages") {
+        if (grp === "Logging" && sub === "Admin") {
           adminMessageGroupContainer = subDiv;
         }
 		if (grp === "Logging" && sub === "Pings") {
@@ -383,10 +391,25 @@ function injectPluginSettingsIntoModal() {
       const table = createRecipeTable(matched, query);
       recipesContainer.appendChild(table);
     });
+	
+	const guruWrapper = document.createElement("div");
+	guruWrapper.style.textAlign = "center";
+	guruWrapper.style.marginTop = "10px";
+
+	const guruText = document.createElement("span");
+	guruText.textContent = "Powered by ";
+
+	const guruLink = createEl("a", ["ftl-ext-tip-link"]);
+	guruLink.textContent = "FISHTANK.GURU";
+	guruLink.href = "https://fishtank.guru";
+	guruLink.target = "_blank";
+	guruWrapper.appendChild(guruText);
+	guruWrapper.appendChild(guruLink);
 
     searchWrapper.appendChild(searchInput);
     searchWrapper.appendChild(recipesContainer);
     craftingGroupContainer.appendChild(searchWrapper);
+	craftingGroupContainer.appendChild(guruWrapper);
   }
   
   let adminWrapperClass;
@@ -456,6 +479,54 @@ function injectPluginSettingsIntoModal() {
     [adminWrapperClass]
   );
   
+  // ─── Fish Messages ─────────────────────────────────────────────────
+  setupLogPanel(
+    fishMessageGroupContainer,
+	FISH_MESSAGE_LOG_KEY,
+    "logFishMessagesOrderAsc",
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-staff-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+        inner.innerHTML = msg.html;
+        wrapper.appendChild(inner);
+        // Un-hide & make clickable:
+        wrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]').forEach(m => {
+          m.style.display = "";
+          makeUsernameClickable(m);
+        });
+        container.appendChild(wrapper);
+      });
+    },
+    [staffWrapperClass]
+  );
+  
+  // ─── Mod Messages ─────────────────────────────────────────────────
+  setupLogPanel(
+    modMessageGroupContainer,
+	MOD_MESSAGE_LOG_KEY,
+    "logModMessagesOrderAsc",
+	(container, messages) => {
+      messages.forEach(msg => {
+        const wrapper = createEl("div", ["ftl-ext-staff-message-wrapper"]);
+        const inner   = createEl("div", ["ftl-ext-staff-message-container"]);
+		inner.dataset.timestamp = msg.timestamp;
+		
+        inner.innerHTML = msg.html;
+        wrapper.appendChild(inner);
+        // Un-hide & make clickable:
+        wrapper.querySelectorAll('[class*="chat-message-default_chat-message-default"]').forEach(m => {
+          m.style.display = "";
+          makeUsernameClickable(m);
+        });
+        container.appendChild(wrapper);
+      });
+    },
+    [staffWrapperClass]
+  );
+  
   // ─── Staff Messages ─────────────────────────────────────────────────
   setupLogPanel(
     staffMessageGroupContainer,
@@ -479,6 +550,7 @@ function injectPluginSettingsIntoModal() {
     },
     [staffWrapperClass]
   );
+  
   
   // ─── Pings ────────────────────────────────────────────────────────────
   setupLogPanel(

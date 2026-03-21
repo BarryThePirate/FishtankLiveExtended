@@ -53,62 +53,52 @@ function logAdminMessage(id, header, message, type) {
   let lowerCaseHeader = null;
   let lowerCaseMessage = null;
   
-  // Force to string converstion
+  // Force to string conversion
   if (header) {
-	// If it isn't a string, change it to the innerHTML
-	header = typeof header === 'string' ? header : (header?.innerHTML || header);
-	lowerCaseHeader = typeof header === 'string' ? header.toLowerCase() : null;
+    header = typeof header === 'string' ? header : (header?.textContent?.trim() || header?.innerHTML || String(header));
+    lowerCaseHeader = typeof header === 'string' ? header.toLowerCase() : null;
   }
   
   if (message) {
-	// If it isn't a string, change it to the innerHTML
-	message = typeof message === 'string' ? message : (message?.innerHTML || message);
-	lowerCaseMessage = typeof message === 'string' ? message.toLowerCase() : null;
+    message = typeof message === 'string' ? message : (message?.textContent?.trim() || message?.innerHTML || String(message));
+    lowerCaseMessage = typeof message === 'string' ? message.toLowerCase() : null;
   }
-	
+  
   // Don't log admin messages sent from this plugin
-  //if (type && typeof type === 'string' && type == 'ftl-ext-admin-message') return;
+  if (type && typeof type === 'string' && type === 'ftl-ext-admin-message') return;
   
   // Don't log season pass reminders
-  if (lowerCaseMessage && (id == 'season-pass' || lowerCaseMessage == 'season-pass')) return;
+  if (lowerCaseMessage && (id === 'season-pass' || lowerCaseMessage === 'season-pass')) return;
   
-  // Don't log 'Forbidden' error messages
-  if (lowerCaseMessage && lowerCaseMessage == 'Forbidden') return;
+  // Don't log forbidden error messages
+  if (lowerCaseMessage === 'forbidden') return;
   
-  if (!SETTINGS.logAdminMessagesLevelUpsMissionsMedals) {
-	// Don't log level up messages
-    if (lowerCaseHeader && lowerCaseHeader.includes('level up')) return;
-	
-	// Don't log mission completed messages
-    if (lowerCaseHeader && lowerCaseHeader.includes('mission complete')) return;
-    if (lowerCaseMessage && (lowerCaseMessage.startsWith('mission complete') || lowerCaseMessage.startsWith('mission accepted'))) return
-	
-	// Don't log medal earned messages
-    if (lowerCaseHeader && lowerCaseHeader.includes('medal earned')) return;
-  }
+  // Don't log messages containing filtered words/phrases
+  const wordFilter = Array.isArray(SETTINGS.logAdminMessagesWordFilter)
+    ? SETTINGS.logAdminMessagesWordFilter
+    : [];
   
-  // Don't log items added to inventory messages
-  if (!SETTINGS.logAdminMessagesFoundItem 
-    && lowerCaseHeader
-	&& lowerCaseMessage
-	&& (lowerCaseHeader.includes('found an item') || lowerCaseMessage.includes('added to your inventory'))) return;
+  const combinedText = `${lowerCaseHeader || ''} ${lowerCaseMessage || ''}`.trim();
   
-  // Don't log polls started
-  if (!SETTINGS.logAdminMessagesNewPollStarted && lowerCaseMessage && lowerCaseMessage.includes('new poll has started')) return;
+  const matchesFilter = wordFilter.some(filterWord => {
+    if (!filterWord || typeof filterWord !== 'string') return false;
+    const needle = filterWord.trim().toLowerCase();
+    if (!needle) return false;
+    return combinedText.includes(needle);
+  });
   
-  // Don't log items added to inventory messages
-  if (!SETTINGS.logAdminMessagesFishToy 
-    && lowerCaseHeader
-	&& lowerCaseHeader.includes('fish toy')) return;
-  
-  // Don't log tips sent/recieved
-  if (!SETTINGS.logAdminMessagesTips && lowerCaseMessage && (lowerCaseMessage.startsWith("you spent ₣") || lowerCaseMessage.startsWith("you received ₣"))) return;
-  
-  // Don't log gifted season passes
-  if (!SETTINGS.logAdminMessagesGiftedSeasonPasses && lowerCaseHeader && lowerCaseHeader.includes('gifted') && lowerCaseHeader.endsWith('season passes!')) return;
+  if (matchesFilter) return;
   
   let log = loadLog(ADMIN_MESSAGE_LOG_KEY, true);
   if (!log) return;
+  
+  const alreadyExists = log.some(entry =>
+    entry.id === id &&
+    entry.header === header &&
+    entry.message === message
+  );
+  
+  if (alreadyExists) return;
   
   log.push({
     id,
@@ -119,14 +109,96 @@ function logAdminMessage(id, header, message, type) {
   
   // Make sure the number isn't somehow higher than it should be
   let numberOfMessages = SETTINGS.logAdminMessagesNumber;
-  if (numberOfMessages > SETTINGS.logAdminMessagesNumber.max) numberOfMessages = SETTINGS.logAdminMessagesNumber.max;
+  if (numberOfMessages > SETTINGS.logAdminMessagesNumber.max) {
+    numberOfMessages = SETTINGS.logAdminMessagesNumber.max;
+  }
+  
+  // Keep only the last X number of messages
+  if (log.length > numberOfMessages) {
+    log = log.slice(-numberOfMessages);
+  }
+  
+  saveLog(log, ADMIN_MESSAGE_LOG_KEY);
+}
+
+/**
+ * Mod message logging
+ */
+function logModMessage(message) {
+  if (SETTINGS.disableModMessageLogging) return;
+	
+  // Check if message has admin/wes class used by staff and a few other special users
+  if (! getClassNameFromObjectWithPrefix('chat-message-default_mod', message, false)) return;
+  
+  const chatMessageId = message.querySelector('[id^="chatMessage-"]')?.id;
+  message = message.querySelector(
+	'.' + getClassNameFromObjectWithPrefix('chat-message-default_chat-message-default', message, false)
+  )?.outerHTML;
+
+  if (! message) return;
+  
+  let log = loadLog(MOD_MESSAGE_LOG_KEY, true);
+  if (! log) return;
+  
+  // Skip if already logged
+  if (log.some(entry => entry.id === chatMessageId)) return;
+  
+  log.push({
+	id: chatMessageId,
+	html: message,
+	timestamp: Date.now()
+  });
+  
+  // Make sure the number isn't somehow higher than it should be
+  let numberOfMessages = SETTINGS.logModMessagesNumber;
+  if (numberOfMessages > SETTINGS.logModMessagesNumber.max) numberOfMessages = SETTINGS.logModMessagesNumber.max;
   
   // Keep only the last X number of messages (changed by user in settings)
   if (log.length > numberOfMessages) {
     log = log.slice(-numberOfMessages);
   }
   
-  saveLog(log, ADMIN_MESSAGE_LOG_KEY);
+  saveLog(log, MOD_MESSAGE_LOG_KEY);
+}
+
+/**
+ * Fish message logging
+ */
+function logFishMessage(message) {
+  if (SETTINGS.disableFishMessageLogging) return;
+	
+  // Check if message has the fish span (meaning they're a fish chatter)
+  if (! message.outerHTML.includes('<span>🐟</span>')) return;
+  
+  const chatMessageId = message.querySelector('[id^="chatMessage-"]')?.id;
+  message = message.querySelector(
+	'.' + getClassNameFromObjectWithPrefix('chat-message-default_chat-message-default', message, false)
+  )?.outerHTML;
+
+  if (! message) return;
+  
+  let log = loadLog(FISH_MESSAGE_LOG_KEY, true);
+  if (! log) return;
+  
+  // Skip if already logged
+  if (log.some(entry => entry.id === chatMessageId)) return;
+  
+  log.push({
+	id: chatMessageId,
+	html: message,
+	timestamp: Date.now()
+  });
+  
+  // Make sure the number isn't somehow higher than it should be
+  let numberOfMessages = SETTINGS.logFishMessagesNumber;
+  if (numberOfMessages > SETTINGS.logFishMessagesNumber.max) numberOfMessages = SETTINGS.logFishMessagesNumber.max;
+  
+  // Keep only the last X number of messages (changed by user in settings)
+  if (log.length > numberOfMessages) {
+    log = log.slice(-numberOfMessages);
+  }
+  
+  saveLog(log, FISH_MESSAGE_LOG_KEY);
 }
 
 /**
@@ -136,18 +208,30 @@ function logStaffMessage(message) {
   if (SETTINGS.disableStaffMessageLogging) return;
 	
   // Check if message has admin/wes class used by staff and a few other special users
-  if (!getClassNameFromObjectWithPrefix('chat-message-default_admin', message, false)
-	  && !getClassNameFromObjectWithPrefix('chat-message-default_wes', message, false)) return;
+  if (! getClassNameFromObjectWithPrefix('chat-message-default_admin', message, false)
+	  && ! getClassNameFromObjectWithPrefix('chat-message-default_wes', message, false)) return;
   
   // Check if it uses a staff/wes avatar image
-  if (!message.querySelector('img[src="https://cdn.fishtank.live/avatars/staff.png"]')
-	  && !message.querySelector('img[src="https://cdn.fishtank.live/avatars/wes.png"]')) return;
+  if (! message.querySelector('img[src="https://cdn.fishtank.live/avatars/staff.png"]')
+	  && ! message.querySelector('img[src="https://cdn.fishtank.live/avatars/wes.png"]')) return;
+  
+  const chatMessageId = message.querySelector('[id^="chatMessage-"]')?.id;
+  message = message.querySelector(
+	'.' + getClassNameFromObjectWithPrefix('chat-message-default_chat-message-default', message, false)
+  )?.outerHTML;
+
+  if (! message) return;
   
   let log = loadLog(STAFF_MESSAGE_LOG_KEY, true);
-  if (!log) return;
+  if (! log) return;
+  
+  // Skip if already logged
+  if (log.some(entry => entry.id === chatMessageId)) return;
+  
   log.push({
-    html: message.outerHTML,
-    timestamp: Date.now()
+	id: chatMessageId,
+	html: message,
+	timestamp: Date.now()
   });
   
   // Make sure the number isn't somehow higher than it should be
@@ -168,10 +252,10 @@ function logStaffMessage(message) {
 function logPing(message) {
   if (SETTINGS.disablePingsLogging) return;
   
-  if (!USERNAME) return;
+  if (! USERNAME) return;
   
   // Check the message contains mentions
-  if (!getClassNameFromObjectWithPrefix('chat-message-default_mention', message, false)) return;
+  if (! getClassNameFromObjectWithPrefix('chat-message-default_mention', message, false)) return;
   
   // Check the message is mentioning this user specifically
   let mentioned = false;
@@ -181,13 +265,25 @@ function logPing(message) {
       mentioned = true;
     }
   });
-  if (!mentioned) return;
+  if (! mentioned) return;
+  
+  const chatMessageId = message.querySelector('[id^="chatMessage-"]')?.id;
+  message = message.querySelector(
+	'.' + getClassNameFromObjectWithPrefix('chat-message-default_chat-message-default', message, false)
+  )?.outerHTML;
+
+  if (! message || ! chatMessageId) return;
   
   let log = loadLog(PINGS_LOG_KEY, true);
-  if (!log) return;
+  if (! log) return;
+  
+  // Skip if already logged
+  if (log.some(entry => entry.id === chatMessageId)) return;
+  
   log.push({
-    html: message.outerHTML,
-    timestamp: Date.now()
+	id: chatMessageId,
+	html: message,
+	timestamp: Date.now()
   });
   
   // Make sure the number isn't somehow higher than it should be
@@ -210,28 +306,38 @@ function logTts(message) {
   
   if (!getClassNameFromObjectWithPrefix('chat-message-tts_chat-message-tts', message, false)) return;
   
-  const from = getObjectFromClassNamePrefix('chat-message-tts_from', message);
-  const room = getObjectFromClassNamePrefix('chat-message-tts_room', message);
-  const ttsMessage = getObjectFromClassNamePrefix('chat-message-tts_message', message);
-  const ttsVoice = getObjectFromClassNamePrefix('chat-message-tts_voice', message);
+  const from = getObjectFromClassNamePrefix('chat-message-tts_from', message)?.innerHTML;
+  const room = getObjectFromClassNamePrefix('chat-message-tts_room', message)?.innerHTML || 'website';
+  const ttsMessage = getObjectFromClassNamePrefix('chat-message-tts_message', message)?.innerHTML;
+  const ttsVoice = getObjectFromClassNamePrefix('chat-message-tts_voice', message)?.innerHTML;
   
   if (!from || !room || !ttsMessage || !ttsVoice) return;
   
   let log = loadLog(TTS_LOG_KEY, true);
   if (!log) return;
+
+  const alreadyExists = log.some(entry =>
+    entry.from === from &&
+    entry.room === room &&
+    entry.message === ttsMessage &&
+    entry.voice === ttsVoice
+  );
+
+  if (alreadyExists) return;
+
   log.push({
-    from: from.innerHTML,
-    room: room.innerHTML,
-    message: ttsMessage.innerHTML,
-	voice: ttsVoice.innerHTML,
+    from: from,
+    room: room,
+    message: ttsMessage,
+    voice: ttsVoice,
     timestamp: Date.now()
   });
   
-  // Make sure the number isn't somehow higher than it should be
   let numberOfMessages = SETTINGS.logTtsNumber;
-  if (numberOfMessages > SETTINGS.logTtsNumber.max) numberOfMessages = SETTINGS.logTtsNumber.max;
+  if (numberOfMessages > SETTINGS.logTtsNumber.max) {
+    numberOfMessages = SETTINGS.logTtsNumber.max;
+  }
   
-  // Keep only the last X number of messages (changed by user in settings)
   if (log.length > numberOfMessages) {
     log = log.slice(-numberOfMessages);
   }
@@ -247,26 +353,35 @@ function logSfx(message) {
   
   if (!getClassNameFromObjectWithPrefix('chat-message-sfx_chat-message-sfx', message, false)) return;
   
-  const from = getObjectFromClassNamePrefix('chat-message-sfx_from', message);
-  const room = getObjectFromClassNamePrefix('chat-message-sfx_room', message);
-  const sfxPrompt = getObjectFromClassNamePrefix('chat-message-sfx_message', message);
+  const from = getObjectFromClassNamePrefix('chat-message-sfx_from', message)?.textContent?.trim();
+  const room = getObjectFromClassNamePrefix('chat-message-tts_room', message)?.textContent?.trim() || 'website';
+  const sfxPrompt = getObjectFromClassNamePrefix('chat-message-sfx_message', message)?.textContent?.trim();
   
-  if (!from || !room || !sfxPrompt ) return;
+  if (!from || !room || !sfxPrompt) return;
   
   let log = loadLog(SFX_LOG_KEY, true);
   if (!log) return;
+
+  const alreadyExists = log.some(entry =>
+    entry.from === from &&
+    entry.room === room &&
+    entry.sfxPrompt === sfxPrompt
+  );
+
+  if (alreadyExists) return;
+
   log.push({
-    from: from.innerHTML,
-    room: room.innerHTML,
-    sfxPrompt: sfxPrompt.innerHTML,
+    from: from,
+    room: room,
+    sfxPrompt: sfxPrompt,
     timestamp: Date.now()
   });
   
-  // Make sure the number isn't somehow higher than it should be
   let numberOfMessages = SETTINGS.logSfxNumber;
-  if (numberOfMessages > SETTINGS.logSfxNumber.max) numberOfMessages = SETTINGS.logSfxNumber.max;
+  if (numberOfMessages > SETTINGS.logSfxNumber.max) {
+    numberOfMessages = SETTINGS.logSfxNumber.max;
+  }
   
-  // Keep only the last X number of messages (changed by user in settings)
   if (log.length > numberOfMessages) {
     log = log.slice(-numberOfMessages);
   }
