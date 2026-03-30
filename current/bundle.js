@@ -7313,7 +7313,7 @@
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="text-link">fishtank.guru</a></div>
+            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -7358,10 +7358,10 @@
         <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
             <div class="flex gap-1 font-bold justify-center flex-wrap">
                 <span>Like this extension?</span>
-                <span class="cursor-pointer text-link" id="ftl-tip-link">TIP</span>
+                <span class="cursor-pointer text-primary font-heavy hover:underline" id="ftl-tip-link">TIP</span>
                 <span class="opacity-40 mx-1">·</span>
                 <span>Want to contribute?</span>
-                <a class="cursor-pointer text-link" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
+                <a class="cursor-pointer text-primary font-heavy hover:underline" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
             </div>
         </div>
     `;
