@@ -43,13 +43,22 @@ site.onUserDetected((username) => {
 
 // Listen for modal events via CustomEvent (no body observer needed)
 document.addEventListener('modalOpen', (e) => {
+    // Firefox content scripts can't access e.detail from page-context CustomEvents
+    // Clone it to avoid "Permission denied to access property" errors
+    let detail;
+    try {
+        detail = e.detail ? JSON.parse(JSON.stringify(e.detail)) : {};
+    } catch {
+        detail = {};
+    }
+
     // Log modal info if debug is on
-    log('[MODAL]', e.detail?.modal, e.detail);
+    log('[MODAL]', detail?.modal, detail);
 
     // Clean up any injected extension content when any modal opens
     document.querySelector('[data-ftl-sdk="settings"]')?.remove();
 
-    const modalName = e.detail?.modal;
+    const modalName = detail?.modal;
 
     // Auto-close season pass popup
     if (modalName === 'seasonPass' && getSetting('autoCloseSeasonPassPopup')) {
@@ -97,7 +106,13 @@ site.whenReady(async () => {
     // This is a separate connection from the site's own socket.
 
     try {
-        await socket.connect(io, msgpackParser, { token: null });
+        const connectTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('connection timeout')), 10000)
+        );
+        await Promise.race([
+            socket.connect(io, msgpackParser, { token: null }),
+            connectTimeout,
+        ]);
         log('Socket connected');
     } catch (err) {
         console.warn('[FTL Extended] Socket connection failed:', err.message);
@@ -298,7 +313,7 @@ site.whenReady(async () => {
     // ── Startup toast ───────────────────────────────────────────────
 
     ui.toasts.notify('FTL Extended loaded!', {
-        description: 'v2.0.0',
+        description: 'v2.0.1',
         type: 'success',
         duration: 3000,
     });

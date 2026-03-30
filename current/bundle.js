@@ -18,13 +18,13 @@
 
   /**
    * core/socket.js — Socket.IO Connection
-   * 
+   *
    * Creates the SDK's own Socket.IO connection to the fishtank.live
    * WebSocket server. This is a clean, independent connection — it does
    * not modify or interfere with the site's own connection.
-   * 
+   *
    * The server uses MessagePack (binary) encoding over Socket.IO v4.
-   * 
+   *
    * Connection handshake sequence (discovered via frame inspection):
    * 1. Connect WebSocket with msgpack parser
    * 2. Socket.IO handshake (automatic)
@@ -56,10 +56,10 @@
 
   /**
    * Connect to the fishtank.live WebSocket server.
-   * 
+   *
    * This creates an independent connection using Socket.IO v4 with
    * MessagePack encoding.
-   * 
+   *
    * @param {Function} ioClient - The socket.io-client `io` function
    * @param {Object} msgpackParser - The socket.io-msgpack-parser module
    * @param {Object} options
@@ -73,18 +73,18 @@
   async function connect(ioClient, msgpackParser, options = {}) {
     if (socket && connected) return socket;
     if (connectionPromise) return connectionPromise;
-    
+
     const {
       token = undefined,  // undefined = auto-detect, null = force unauthenticated
       autoSubscribe = true,
     } = options;
-    
+
     // Resolve the auth token
     let authToken = token;
     if (authToken === undefined) {
       authToken = getAuthTokenFromCookie();
     }
-    
+
     connectionPromise = new Promise((resolve, reject) => {
       try {
         socket = ioClient(SOCKET_URL, {
@@ -100,30 +100,30 @@
             token: authToken || null,
           },
         });
-        
+
         socket.on('connect', () => {
           connected = true;
           authenticated = !!authToken;
           console.log(
-            '[ftl-ext-sdk] Socket connected',
-            authenticated ? '(authenticated)' : '(anonymous)'
+              '[ftl-ext-sdk] Socket connected',
+              authenticated ? '(authenticated)' : '(anonymous)'
           );
-          
+
           // Register any listeners that were added before connection
           for (const { event, callback } of pendingListeners) {
             socket.on(event, callback);
           }
           pendingListeners.length = 0;
-          
+
           resolve(socket);
         });
-        
+
         socket.on('disconnect', (reason) => {
           connected = false;
           authenticated = false;
           console.log('[ftl-ext-sdk] Socket disconnected:', reason);
         });
-        
+
         socket.on('connect_error', (err) => {
           console.warn('[ftl-ext-sdk] Socket connection error:', err.message);
           if (!connected) {
@@ -136,18 +136,18 @@
         connectionPromise = null;
       }
     });
-    
+
     return connectionPromise;
   }
 
   /**
    * Listen for a Socket.IO event from the server.
-   * 
+   *
    * Can be called before connect() — listeners will be queued and
    * registered once the connection is established.
-   * 
+   *
    * Returns an unsubscribe function.
-   * 
+   *
    * @param {string} eventName - The event name (use EVENTS constants)
    * @param {Function} callback - Called with the event data
    * @returns {Function} Unsubscribe function
@@ -158,14 +158,14 @@
       listeners.set(eventName, new Set());
     }
     listeners.get(eventName).add(callback);
-    
+
     // Register on the socket if connected, otherwise queue
     if (socket && connected) {
       socket.on(eventName, callback);
     } else {
       pendingListeners.push({ event: eventName, callback });
     }
-    
+
     // Return unsubscribe function
     return () => {
       listeners.get(eventName)?.delete(callback);
@@ -1214,8 +1214,8 @@
               }
           case "arraybuffer":
           default:
-              if (data instanceof ArrayBuffer) {
-                  // from HTTP long-polling (base64) or WebSocket + binaryType "arraybuffer"
+              if (data instanceof ArrayBuffer || Object.prototype.toString.call(data) === "[object ArrayBuffer]") {
+                // from HTTP long-polling (base64) or WebSocket + binaryType "arraybuffer" (patched for Firefox)
                   return data;
               }
               else {
@@ -5414,7 +5414,7 @@
 
   	function Decoder(buffer) {
   	  this._offset = 0;
-  	  if (buffer instanceof ArrayBuffer) {
+  	  if (buffer instanceof ArrayBuffer || Object.prototype.toString.call(buffer) === "[object ArrayBuffer]") {
   	    this._buffer = buffer;
   	    this._view = new DataView(this._buffer);
   	  } else if (ArrayBuffer.isView(buffer)) {
@@ -6237,7 +6237,7 @@
    */
   function timeDiv(timestamp) {
       const div = document.createElement('div');
-      div.className = 'font-secondary text-xs opacity-30 leading-none tracking-wide text-right mt-1 text-shadow-[1px_1px_0_#000000]';
+      div.className = 'font-secondary text-xs text-light-400/50 leading-none tracking-wide text-right mt-1 text-shadow-[1px_1px_0_#000000]';
       div.textContent = formatTimestamp(timestamp);
       return div;
   }
@@ -6249,7 +6249,7 @@
   function logRow(role) {
       const row = document.createElement('div');
       const bg = role && ROLE_STYLES[role] ? ROLE_STYLES[role].bg : '';
-      row.className = `group flex flex-col p-1 md:p-2 hover:bg-white/5 border-b-1 border-dark-400/25 last:border-0 ${bg}`;
+      row.className = `group flex flex-col p-1 md:p-2 hover:bg-white/5 ${bg}`;
       return row;
   }
 
@@ -6363,7 +6363,7 @@
    */
   function compactRow() {
       const row = document.createElement('div');
-      row.className = 'flex gap-2 px-2 py-1.5 border-b-1 border-dark-400/25 last:border-0';
+      row.className = 'flex gap-2 px-2 py-1.5 hover:bg-white/5';
       return row;
   }
 
@@ -6553,7 +6553,7 @@
 
   function buildAdminRow(entry) {
       const row = document.createElement('div');
-      row.className = 'group flex flex-col p-1 md:p-2 hover:bg-white/5 border-b-1 border-dark-400/25 last:border-0';
+      row.className = 'group flex flex-col p-1 md:p-2 hover:bg-white/5';
 
       const topLine = document.createElement('div');
       topLine.className = 'flex gap-1';
@@ -7175,20 +7175,35 @@
       currentUsername$1 = name;
   }
 
+  /**
+   * Dispatch a CustomEvent that works in both Chrome and Firefox.
+   * Firefox content scripts need cloneInto() to make the detail
+   * object accessible to the page's JavaScript — without it, the
+   * page gets "Permission denied to access property" errors.
+   * cloneInto is a Firefox-only global; on Chrome it doesn't exist
+   * and we just pass the detail through normally.
+   */
+  function dispatchPageEvent(eventName, detail = {}) {
+      const safeDetail = typeof cloneInto === 'function'
+          ? cloneInto(detail, document.defaultView)
+          : detail;
+      document.dispatchEvent(new CustomEvent(eventName, { detail: safeDetail }));
+  }
+
   // ── Generic modal open helper ───────────────────────────────────────
 
   function openModal(modalName, data = {}) {
       if (document.getElementById('modal')) {
-          document.dispatchEvent(new CustomEvent('modalClose'));
+          dispatchPageEvent('modalClose');
           setTimeout(() => {
-              document.dispatchEvent(new CustomEvent('modalOpen', {
-                  detail: { modal: modalName, data: JSON.stringify(data) }
-              }));
+              dispatchPageEvent('modalOpen', {
+                  modal: modalName, data: JSON.stringify(data)
+              });
           }, 50);
       } else {
-          document.dispatchEvent(new CustomEvent('modalOpen', {
-              detail: { modal: modalName, data: JSON.stringify(data) }
-          }));
+          dispatchPageEvent('modalOpen', {
+              modal: modalName, data: JSON.stringify(data)
+          });
       }
   }
 
@@ -7250,17 +7265,15 @@
 
   function openSettingsModal() {
       if (document.getElementById('modal')) {
-          document.dispatchEvent(new CustomEvent('modalClose'));
+          dispatchPageEvent('modalClose');
           setTimeout(openSettingsModal, 50);
           return;
       }
 
-      document.dispatchEvent(new CustomEvent('modalOpen', {
-          detail: {
-              modal: 'ftlExtended',
-              data: JSON.stringify({}),
-          }
-      }));
+      dispatchPageEvent('modalOpen', {
+          modal: 'ftlExtended',
+          data: JSON.stringify({}),
+      });
 
       // One-shot observer on body to find the modal element, then disconnect
       const observer = new MutationObserver(() => {
@@ -7349,7 +7362,7 @@
                     <button data-ftl-log-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
                 </div>
             </div>
-            <div data-ftl-log-content class="relative flex flex-col gap-2 w-full bg-dark-700/25 border-2 border-dark-300/50 rounded-lg overflow-y-auto py-2 text-light-text text-shadow-lg shadow-panel-soft" style="height: 600px; overflow-x: hidden; scrollbar-width: thin; scrollbar-gutter: stable both-edges;">
+            <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 600px; overflow-x: hidden; scrollbar-width: thin;">
                 <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
             </div>
         </div>
@@ -7592,17 +7605,15 @@
   function wireUpTipLink(contentArea) {
       contentArea.querySelector('#ftl-tip-link')?.addEventListener('click', () => {
           contentArea.remove();
-          document.dispatchEvent(new CustomEvent('modalClose'));
+          dispatchPageEvent('modalClose');
           setTimeout(() => {
-              document.dispatchEvent(new CustomEvent('modalOpen', {
-                  detail: {
-                      modal: 'tip',
-                      data: JSON.stringify({
-                          userId: '3bd89a72-5aa2-4ad8-b461-71516bd6b4d5',
-                          displayName: 'BarryThePirate'
-                      }),
-                  }
-              }));
+              dispatchPageEvent('modalOpen', {
+                  modal: 'tip',
+                  data: JSON.stringify({
+                      userId: '3bd89a72-5aa2-4ad8-b461-71516bd6b4d5',
+                      displayName: 'BarryThePirate'
+                  }),
+              });
           }, 50);
       });
   }
@@ -8258,13 +8269,22 @@
 
   // Listen for modal events via CustomEvent (no body observer needed)
   document.addEventListener('modalOpen', (e) => {
+      // Firefox content scripts can't access e.detail from page-context CustomEvents
+      // Clone it to avoid "Permission denied to access property" errors
+      let detail;
+      try {
+          detail = e.detail ? JSON.parse(JSON.stringify(e.detail)) : {};
+      } catch {
+          detail = {};
+      }
+
       // Log modal info if debug is on
-      log('[MODAL]', e.detail?.modal, e.detail);
+      log('[MODAL]', detail?.modal, detail);
 
       // Clean up any injected extension content when any modal opens
       document.querySelector('[data-ftl-sdk="settings"]')?.remove();
 
-      const modalName = e.detail?.modal;
+      const modalName = detail?.modal;
 
       // Auto-close season pass popup
       if (modalName === 'seasonPass' && getSetting('autoCloseSeasonPassPopup')) {
@@ -8311,7 +8331,13 @@
       // This is a separate connection from the site's own socket.
 
       try {
-          await connect(lookup, msgpackParser, { token: null });
+          const connectTimeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('connection timeout')), 10000)
+          );
+          await Promise.race([
+              connect(lookup, msgpackParser, { token: null }),
+              connectTimeout,
+          ]);
           log('Socket connected');
       } catch (err) {
           console.warn('[FTL Extended] Socket connection failed:', err.message);
@@ -8505,7 +8531,7 @@
       // ── Startup toast ───────────────────────────────────────────────
 
       notify('FTL Extended loaded!', {
-          description: 'v2.0.0',
+          description: 'v2.0.1',
           type: 'success',
           duration: 3000,
       });
