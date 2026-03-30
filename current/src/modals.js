@@ -103,12 +103,75 @@ export function tryInjectDropdownButton() {
     billingBtn.insertAdjacentElement('beforebegin', btn);
 }
 
+// ── Ping button in chat header ──────────────────────────────────────
+// Injects a small @ button into the chat header bar (next to the
+// megaphone button). Clicking it opens FTL Extended on the pings log.
+
+export function tryInjectPingButton() {
+    // Find the chat header — it contains "Chat" text and the "Global" pill
+    const chatLabels = document.querySelectorAll('span.font-bold.text-dark-text');
+    let chatHeader = null;
+    for (const label of chatLabels) {
+        if (label.textContent.trim() === 'Chat') {
+            chatHeader = label.closest('.flex.items-center.px-1');
+            break;
+        }
+    }
+    if (!chatHeader) return;
+
+    // Already injected
+    if (chatHeader.querySelector('[data-ftl-sdk="ping-btn"]')) return;
+
+    // Find the button container on the right side of the header
+    const btnContainer = chatHeader.querySelector('.flex.items-center.gap-0\\.5');
+    if (!btnContainer) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'relative translate-y-[2px]';
+    wrapper.setAttribute('data-ftl-sdk', 'ping-btn');
+
+    const btn = document.createElement('button');
+    btn.className = 'bg-gradient-to-r from-primary-400 to-primary-500/90 active:to-primary-600/75 p-0.5 inline-flex items-center justify-center cursor-pointer rounded-md hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary pointer-events-auto';
+    btn.type = 'button';
+    btn.title = 'View pings';
+    btn.innerHTML = `
+        <div class="text-light-text bg-gradient-to-t from-primary-400 to-primary-500 active:bg-gradient-to-b active:from-primary-500 active:to-primary-300 border-light/25 active:border-light/15 p-0.5 rounded-sm">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 5.58 2 10c0 2.24 1.12 4.26 2.92 5.72-.18.66-.52 1.56-1.18 2.56-.22.34-.02.76.36.82 1.76.26 3.64-.12 4.92-.94.62.12 1.28.18 1.98.18 5.52 0 10-3.58 10-8S17.52 2 12 2zm-2 11.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+            </svg>
+        </div>
+    `;
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSettingsModalToTab('logging', 'pings');
+    });
+
+    wrapper.appendChild(btn);
+    btnContainer.insertBefore(wrapper, btnContainer.firstChild);
+}
+
 // ── Settings modal ──────────────────────────────────────────────────
 
+let pendingTab = null;
+let pendingLog = null;
+
 export function openSettingsModal() {
+    pendingTab = null;
+    pendingLog = null;
+    openSettingsModalInternal();
+}
+
+export function openSettingsModalToTab(tabName, logType = null) {
+    pendingTab = tabName;
+    pendingLog = logType;
+    openSettingsModalInternal();
+}
+
+function openSettingsModalInternal() {
     if (document.getElementById('modal')) {
         dispatchPageEvent('modalClose');
-        setTimeout(openSettingsModal, 50);
+        setTimeout(openSettingsModalInternal, 50);
         return;
     }
 
@@ -258,7 +321,7 @@ function wireUpTabs(contentArea) {
         tab.addEventListener('click', () => activateTab(tab.getAttribute('data-ftl-tab')));
     });
 
-    activateTab('general');
+    activateTab(pendingTab || 'general');
 }
 
 // ── Toggles ─────────────────────────────────────────────────────────
@@ -366,8 +429,8 @@ function wireUpLogging(contentArea) {
         renderLog(activeLogType, logContent, currentUsername);
     });
 
-    // Default to admin
-    activateLog('admin');
+    // Default to admin, or use pending log type if navigating from ping button etc.
+    activateLog(pendingLog || 'admin');
 }
 
 // ── Admin filter UI ─────────────────────────────────────────────────

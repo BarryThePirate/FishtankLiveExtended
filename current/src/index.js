@@ -22,7 +22,7 @@ import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
 import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast } from './logging.js';
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
-import { openSettingsModal, openModal, tryInjectDropdownButton, setCurrentUsername } from './modals.js';
+import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, setCurrentUsername } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch } from './inventory.js';
@@ -305,6 +305,10 @@ site.whenReady(async () => {
     // ── Hidden clickable zone detection ────────────────────────────────
 
     initZoneDetection();
+
+    // ── Ping button in chat header ──────────────────────────────────
+
+    tryInjectPingButton();
 
     // ── Theatre mode button intercept ───────────────────────────────
 
