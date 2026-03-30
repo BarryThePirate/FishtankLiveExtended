@@ -121,7 +121,7 @@ setTimeout(() => {
  * Once all sub observers are setup, stop observing document.body for efficiency
  */
 const watchingFor = [
-  { 
+  {
     // Capture username
 	parentPrefix: 'top-bar_top-bar',
 	parentName: null,

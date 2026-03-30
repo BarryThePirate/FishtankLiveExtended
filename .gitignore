@@ -1,4 +1,8 @@
 ignore/
+builds/
 *.zip
 barrythepirate.github.io/
 overrides/
+ftl-ext-sdk/
+.idea/
+current/node_modules/

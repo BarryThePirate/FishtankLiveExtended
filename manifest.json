@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fishtank Live Extended",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "description": "An open source project aimed at extending functionality on fishtank.live",
   "permissions": [],
   "icons": {
@@ -12,20 +12,25 @@
   "content_scripts": [
     {
       "matches": ["*://classic.fishtank.live/*"],
-	  "css": ["src/styles.css"],
+      "css": ["classic/styles.css"],
       "js": [
-        "settings.js",
-        "src/helpers.js",
-		"src/general.js",
-        "src/item-crafting.js",
-        "src/settings-editor.js",
-        "src/anti-spam.js",
-        "src/filter.js",
-        "src/logging.js",
-        "src/video-player-observe.js",
-		"src/offline-recipes.js",
-        "src/init.js"
+        "classic/settings.js",
+        "classic/helpers.js",
+        "classic/general.js",
+        "classic/item-crafting.js",
+        "classic/settings-editor.js",
+        "classic/anti-spam.js",
+        "classic/filter.js",
+        "classic/logging.js",
+        "classic/video-player-observe.js",
+        "classic/offline-recipes.js",
+        "classic/init.js"
       ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://fishtank.live/*", "*://www.fishtank.live/*"],
+      "js": ["current/bundle.js"],
       "run_at": "document_idle"
     }
   ],

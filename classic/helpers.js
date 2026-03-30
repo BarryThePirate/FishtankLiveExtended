@@ -378,7 +378,7 @@ function resizeVideo() {
 
       hideChatButton.addEventListener('click', e => {
         if (chat) {
-          chat.style.zIndex = chat.style.zIndex === '2' ? '7' : '2';
+          chat.style.zIndex = chat.style.zIndex === '2' ? '4' : '2';
 		  iconHolder.innerHTML = chat.style.zIndex === '2'? SVG_OPEN_CHAT : SVG_CLOSE_CHAT;
 		  resizeVideo();
         }

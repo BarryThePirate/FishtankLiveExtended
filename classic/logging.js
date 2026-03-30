@@ -354,7 +354,7 @@ function logSfx(message) {
   if (!getClassNameFromObjectWithPrefix('chat-message-sfx_chat-message-sfx', message, false)) return;
   
   const from = getObjectFromClassNamePrefix('chat-message-sfx_from', message)?.textContent?.trim();
-  const room = getObjectFromClassNamePrefix('chat-message-tts_room', message)?.textContent?.trim() || 'website';
+  const room = getObjectFromClassNamePrefix('chat-message-sfx_room', message)?.textContent?.trim() || 'website';
   const sfxPrompt = getObjectFromClassNamePrefix('chat-message-sfx_message', message)?.textContent?.trim();
   
   if (!from || !room || !sfxPrompt) return;

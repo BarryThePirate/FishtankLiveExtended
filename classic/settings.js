@@ -20,7 +20,7 @@ let SETTINGS;
 let CLASSES = {};
 const CLASS_OBSERVER_MAP = new Map();
 let CSS_MAP;
-const CONTRIBUTORS = ["BarryThePirate"];
+const CONTRIBUTORS = [];
 
 /**
   * SVGs

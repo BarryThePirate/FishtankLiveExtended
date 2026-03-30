@@ -1,0 +1,457 @@
+/**
+ * modals.js — Modal builders and helpers
+ *
+ * Contains the FTL Extended settings modal (the big tabbed panel),
+ * the dropdown button injector, and a generic modal-open helper.
+ *
+ * NO body-level MutationObservers. The dropdown button is injected
+ * via a click listener on the profile avatar area, and modals are
+ * detected via the SDK's modalOpen event.
+ */
+
+import { getSetting, updateSetting } from './settings.js';
+import { toggleRow, logPill } from './ui-helpers.js';
+import { renderRecipeResults } from './crafting.js';
+import {
+    getLog, getAdminFilter, renderLog, clearLog, resizeLog,
+    addFilterTerm, removeFilterTerm,
+} from './logging.js';
+import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
+
+let currentUsername = null;
+
+export function setCurrentUsername(name) {
+    currentUsername = name;
+}
+
+// ── Generic modal open helper ───────────────────────────────────────
+
+export function openModal(modalName, data = {}) {
+    if (document.getElementById('modal')) {
+        document.dispatchEvent(new CustomEvent('modalClose'));
+        setTimeout(() => {
+            document.dispatchEvent(new CustomEvent('modalOpen', {
+                detail: { modal: modalName, data: JSON.stringify(data) }
+            }));
+        }, 50);
+    } else {
+        document.dispatchEvent(new CustomEvent('modalOpen', {
+            detail: { modal: modalName, data: JSON.stringify(data) }
+        }));
+    }
+}
+
+// ── Dropdown button injection ───────────────────────────────────────
+// Injects our "FTL Extended" button into the profile dropdown.
+// Called from a click listener on the top-right profile area —
+// NOT from a body observer.
+
+export function tryInjectDropdownButton() {
+    const dropdown = document.querySelector('.fixed.top-0.right-\\[16px\\]');
+    if (!dropdown || dropdown.querySelector('[data-ftl-sdk="dropdown-btn"]')) return;
+
+    const buttons = dropdown.querySelectorAll('button');
+    const billingBtn = [...buttons].find(btn => btn.textContent.trim().includes('Billing'));
+    if (!billingBtn) return;
+
+    const btn = document.createElement('button');
+    btn.setAttribute('data-ftl-sdk', 'dropdown-btn');
+    btn.className = 'flex items-center w-full rounded-md gap-2 px-2 py-1 font-medium cursor-pointer drop-shadow-[2px_2px_0_#00000075] hover:text-primary-400 hover:bg-light/5';
+    btn.innerHTML = `
+        <div class="flex items-center text-primary">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="1em" height="1em">
+                <rect x="7" y="6" width="10" height="2"></rect>
+                <rect x="6" y="8" width="12" height="2"></rect>
+                <rect x="6" y="10" width="2" height="2"></rect>
+                <rect x="11" y="10" width="2" height="2"></rect>
+                <rect x="16" y="10" width="2" height="2"></rect>
+                <rect x="13" y="12" width="3" height="2"></rect>
+                <rect x="8" y="12" width="3" height="2"></rect>
+                <rect x="9" y="14" width="6" height="1"></rect>
+                <rect x="10" y="17" width="4" height="1"></rect>
+                <rect x="11" y="15" width="1" height="1"></rect>
+                <rect x="13" y="15" width="1" height="1"></rect>
+                <rect x="12" y="16" width="1" height="1"></rect>
+                <rect x="10" y="16" width="1" height="1"></rect>
+                <rect x="2" y="0" width="2" height="2"></rect>
+                <rect x="0" y="2" width="4" height="2"></rect>
+                <rect x="4" y="4" width="2" height="2"></rect>
+                <rect x="20" y="0" width="2" height="2"></rect>
+                <rect x="20" y="2" width="4" height="2"></rect>
+                <rect x="18" y="4" width="2" height="2"></rect>
+                <rect x="0" y="20" width="4" height="2"></rect>
+                <rect x="2" y="22" width="2" height="2"></rect>
+                <rect x="4" y="18" width="2" height="2"></rect>
+                <rect x="6" y="16" width="2" height="2"></rect>
+                <rect x="20" y="20" width="4" height="2"></rect>
+                <rect x="20" y="22" width="2" height="2"></rect>
+                <rect x="18" y="18" width="2" height="2"></rect>
+                <rect x="16" y="16" width="2" height="2"></rect>
+            </svg>
+        </div>
+        <div class="flex items-center">FTL Extended</div>
+    `;
+    btn.addEventListener('click', openSettingsModal);
+    billingBtn.insertAdjacentElement('beforebegin', btn);
+}
+
+// ── Settings modal ──────────────────────────────────────────────────
+
+export function openSettingsModal() {
+    if (document.getElementById('modal')) {
+        document.dispatchEvent(new CustomEvent('modalClose'));
+        setTimeout(openSettingsModal, 50);
+        return;
+    }
+
+    document.dispatchEvent(new CustomEvent('modalOpen', {
+        detail: {
+            modal: 'ftlExtended',
+            data: JSON.stringify({}),
+        }
+    }));
+
+    // One-shot observer on body to find the modal element, then disconnect
+    const observer = new MutationObserver(() => {
+        const modal = document.getElementById('modal');
+        if (!modal) return;
+        observer.disconnect();
+
+        setTimeout(() => buildSettingsContent(modal), 50);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function buildSettingsContent(modal) {
+    const card = modal.querySelector('.relative');
+    if (!card) return;
+
+    const wrapper = modal.querySelector('.absolute.w-\\[400px\\]');
+    if (wrapper) wrapper.classList.replace('w-[400px]', 'w-[600px]');
+
+    const contentArea = document.createElement('div');
+    contentArea.setAttribute('data-ftl-sdk', 'settings');
+    contentArea.innerHTML = `
+        <div class="text-center font-bold mb-3 capitalize">FTL Extended</div>
+
+        <!-- Tab bar -->
+        <div class="flex gap-1 md:gap-3 mb-4">
+            <button data-ftl-tab="general" class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full outline-1 outline-tertiary brightness-110" type="button">
+                <div class="text-light-text bg-gradient-to-t from-primary-400 to-primary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">General</div>
+            </button>
+            <button data-ftl-tab="crafting" class="bg-gradient-to-r from-secondary-500 to-secondary-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
+                <div class="text-light-text bg-gradient-to-t from-secondary-400 to-secondary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Crafting</div>
+            </button>
+            <button data-ftl-tab="logging" class="bg-gradient-to-r from-tertiary-500 to-tertiary-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
+                <div class="text-light-text bg-gradient-to-t from-tertiary-400 to-tertiary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Logging</div>
+            </button>
+        </div>
+
+        <!-- General tab -->
+        <div data-ftl-panel="general">
+            ${toggleRow('Auto Close Season Pass Popup', 'autoCloseSeasonPassPopup', getSetting('autoCloseSeasonPassPopup'))}
+            ${toggleRow('Keyboard Shortcuts', 'enableKeyboardShortcuts', getSetting('enableKeyboardShortcuts'), 'Q P H X C M S &nbsp;(E always works)')}
+            ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
+            ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
+        </div>
+
+        <!-- Crafting tab -->
+        <div data-ftl-panel="crafting" class="hidden">
+            ${toggleRow('Show Recipes When Crafting', 'showRecipesWhenCrafting', getSetting('showRecipesWhenCrafting'))}
+            ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
+            <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
+            <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
+            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="text-link">fishtank.guru</a></div>
+        </div>
+
+        <!-- Logging tab -->
+        <div data-ftl-panel="logging" class="hidden">
+            <div class="flex gap-1 mb-3">
+                ${logPill('admin', 'Admin')}
+                ${logPill('staff', 'Staff')}
+                ${logPill('mod', 'Mod')}
+                ${logPill('fish', 'Fish')}
+                ${logPill('pings', 'Pings')}
+                ${logPill('tts', 'TTS')}
+                ${logPill('sfx', 'SFX')}
+            </div>
+            <div data-ftl-log-size-row class="hidden flex items-center gap-2 mb-3 text-xs opacity-60">
+                <span>Log size (max 1000)</span>
+                <input data-ftl-log-size type="number" min="1" max="1000" value="${getSetting('ttsLogSize')}" class="w-[64px] text-center font-regular leading-none h-[24px] p-1 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                <button data-ftl-log-clear class="ml-auto cursor-pointer opacity-60 hover:opacity-100 hover:text-red-400 transition-all" type="button" title="Clear log">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="16" height="16">
+                        <rect x="9" y="0" width="6" height="2"></rect>
+                        <rect x="7" y="2" width="2" height="2"></rect>
+                        <rect x="15" y="2" width="2" height="2"></rect>
+                        <rect x="2" y="4" width="20" height="2"></rect>
+                        <rect x="4" y="6" width="2" height="16"></rect>
+                        <rect x="18" y="6" width="2" height="16"></rect>
+                        <rect x="4" y="22" width="14" height="2"></rect>
+                        <rect x="9" y="8" width="1" height="12"></rect>
+                        <rect x="14" y="8" width="1" height="12"></rect>
+                    </svg>
+                </button>
+                <div data-ftl-log-clear-confirm class="hidden ml-auto flex items-center gap-2">
+                    <span class="opacity-75">Sure?</span>
+                    <button data-ftl-log-clear-yes class="cursor-pointer text-red-400 hover:opacity-100 font-bold" type="button">Yes</button>
+                    <button data-ftl-log-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
+                </div>
+            </div>
+            <div data-ftl-log-content class="relative flex flex-col gap-2 w-full bg-dark-700/25 border-2 border-dark-300/50 rounded-lg overflow-y-auto py-2 text-light-text text-shadow-lg shadow-panel-soft" style="height: 600px; overflow-x: hidden; scrollbar-width: thin; scrollbar-gutter: stable both-edges;">
+                <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
+            <div class="flex gap-1 font-bold justify-center flex-wrap">
+                <span>Like this extension?</span>
+                <span class="cursor-pointer text-link" id="ftl-tip-link">TIP</span>
+                <span class="opacity-40 mx-1">·</span>
+                <span>Want to contribute?</span>
+                <a class="cursor-pointer text-link" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
+            </div>
+        </div>
+    `;
+    card.appendChild(contentArea);
+
+    wireUpTabs(contentArea);
+    wireUpToggles(contentArea);
+    wireUpCraftingSearch(contentArea);
+    wireUpLogging(contentArea);
+    wireUpTipLink(contentArea);
+}
+
+// ── Tab switching ───────────────────────────────────────────────────
+
+function wireUpTabs(contentArea) {
+    const tabs = contentArea.querySelectorAll('[data-ftl-tab]');
+    const panels = contentArea.querySelectorAll('[data-ftl-panel]');
+
+    function activateTab(tabName) {
+        tabs.forEach(tab => {
+            const isActive = tab.getAttribute('data-ftl-tab') === tabName;
+            tab.classList.toggle('brightness-110', isActive);
+            tab.classList.toggle('outline-1', isActive);
+            tab.classList.toggle('outline-tertiary', isActive);
+            tab.classList.toggle('brightness-75', !isActive);
+        });
+        panels.forEach(panel => {
+            const isPanelActive = panel.getAttribute('data-ftl-panel') === tabName;
+            panel.classList.toggle('hidden', !isPanelActive);
+        });
+
+        // Hide admin filter when not on logging/admin
+        const filterPanel = contentArea.querySelector('[data-ftl-admin-filter]');
+        if (filterPanel && tabName !== 'logging') filterPanel.classList.add('hidden');
+    }
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => activateTab(tab.getAttribute('data-ftl-tab')));
+    });
+
+    activateTab('general');
+}
+
+// ── Toggles ─────────────────────────────────────────────────────────
+
+function wireUpToggles(contentArea) {
+    contentArea.querySelectorAll('[data-ftl-toggle]').forEach(toggle => {
+        const key = toggle.getAttribute('data-ftl-toggle');
+        const knob = toggle.querySelector('div');
+        toggle.addEventListener('click', () => {
+            const newVal = !getSetting(key);
+            updateSetting(key, newVal);
+            knob.classList.toggle('left-[0px]', newVal);
+            knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
+        });
+    });
+}
+
+// ── Crafting search ─────────────────────────────────────────────────
+
+function wireUpCraftingSearch(contentArea) {
+    const searchInput = contentArea.querySelector('[data-ftl-craft-search]');
+    const resultsContainer = contentArea.querySelector('[data-ftl-craft-results]');
+    if (searchInput && resultsContainer) {
+        searchInput.addEventListener('input', () => {
+            renderRecipeResults(searchInput.value.trim(), resultsContainer);
+        });
+    }
+}
+
+// ── Logging panel ───────────────────────────────────────────────────
+
+function wireUpLogging(contentArea) {
+    const logBtns    = contentArea.querySelectorAll('[data-ftl-log]');
+    const logContent = contentArea.querySelector('[data-ftl-log-content]');
+    const sizeRow    = contentArea.querySelector('[data-ftl-log-size-row]');
+    const sizeInput  = contentArea.querySelector('[data-ftl-log-size]');
+    const clearBtn   = contentArea.querySelector('[data-ftl-log-clear]');
+    const clearConfirm = contentArea.querySelector('[data-ftl-log-clear-confirm]');
+    const clearYes   = contentArea.querySelector('[data-ftl-log-clear-yes]');
+    const clearNo    = contentArea.querySelector('[data-ftl-log-clear-no]');
+
+    let activeLogType = 'admin';
+
+    function activateLog(logType) {
+        activeLogType = logType;
+
+        logBtns.forEach(btn => {
+            const isActive = btn.getAttribute('data-ftl-log') === logType;
+            btn.classList.toggle('brightness-125', isActive);
+            btn.classList.toggle('brightness-50', !isActive);
+        });
+
+        sizeRow.classList.remove('hidden');
+        const sizeKey = {
+            tts: 'ttsLogSize', sfx: 'sfxLogSize', pings: 'pingsLogSize',
+            staff: 'staffLogSize', mod: 'modLogSize', fish: 'fishLogSize',
+            admin: 'adminLogSize',
+        }[logType] || 'adminLogSize';
+        sizeInput.value = getSetting(sizeKey) || 200;
+
+        // Hide admin filter for non-admin logs
+        const filterPanel = contentArea.querySelector('[data-ftl-admin-filter]');
+        if (filterPanel) filterPanel.classList.toggle('hidden', logType !== 'admin');
+
+        renderLog(logType, logContent, currentUsername);
+
+        // Show admin filter UI for admin log
+        if (logType === 'admin') {
+            showAdminFilter(contentArea, logContent);
+        }
+    }
+
+    logBtns.forEach(btn => {
+        btn.addEventListener('click', () => activateLog(btn.getAttribute('data-ftl-log')));
+    });
+
+    // Log size change
+    sizeInput.addEventListener('change', () => {
+        const val = Math.max(1, Math.min(1000, parseInt(sizeInput.value) || 200));
+        sizeInput.value = val;
+        const sizeKey = {
+            tts: 'ttsLogSize', sfx: 'sfxLogSize', pings: 'pingsLogSize',
+            staff: 'staffLogSize', mod: 'modLogSize', fish: 'fishLogSize',
+            admin: 'adminLogSize',
+        }[activeLogType];
+        if (sizeKey) {
+            updateSetting(sizeKey, val);
+            resizeLog(activeLogType, val);
+        }
+    });
+
+    // Clear log
+    clearBtn.addEventListener('click', () => {
+        clearBtn.classList.add('hidden');
+        clearConfirm.classList.remove('hidden');
+    });
+    clearNo.addEventListener('click', () => {
+        clearConfirm.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+    });
+    clearYes.addEventListener('click', () => {
+        clearConfirm.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+        clearLog(activeLogType);
+        renderLog(activeLogType, logContent, currentUsername);
+    });
+
+    // Default to admin
+    activateLog('admin');
+}
+
+// ── Admin filter UI ─────────────────────────────────────────────────
+
+function showAdminFilter(contentArea, logContent) {
+    let filterPanel = contentArea.querySelector('[data-ftl-admin-filter]');
+    if (!filterPanel) {
+        filterPanel = document.createElement('div');
+        filterPanel.setAttribute('data-ftl-admin-filter', '');
+        filterPanel.className = 'mb-2';
+        filterPanel.innerHTML = `
+            <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs opacity-60">Filter terms (hide matching toasts)</span>
+            </div>
+            <div class="flex gap-1 mb-1">
+                <input data-ftl-filter-input type="text" placeholder="e.g. You found an item" class="flex-1 font-regular text-xs leading-none h-[24px] px-2 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                <button data-ftl-filter-add class="text-xs px-2 h-[24px] rounded-md bg-dark-400/75 border-1 border-light/25 cursor-pointer hover:brightness-125" type="button">Add</button>
+            </div>
+            <div data-ftl-filter-list class="flex flex-wrap gap-1 min-h-[20px]"></div>
+        `;
+        logContent.insertAdjacentElement('beforebegin', filterPanel);
+
+        const filterInput = filterPanel.querySelector('[data-ftl-filter-input]');
+        const filterAdd = filterPanel.querySelector('[data-ftl-filter-add]');
+        const filterList = filterPanel.querySelector('[data-ftl-filter-list]');
+
+        const addTerm = () => {
+            const val = filterInput.value.trim();
+            if (addFilterTerm(val)) {
+                filterInput.value = '';
+                renderFilterList(filterList);
+            } else {
+                filterInput.value = '';
+            }
+        };
+
+        filterAdd.addEventListener('click', addTerm);
+        filterInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addTerm();
+        });
+
+        renderFilterList(filterList);
+    }
+    filterPanel.classList.remove('hidden');
+}
+
+function renderFilterList(container) {
+    container.innerHTML = '';
+    const terms = getAdminFilter();
+    if (terms.length === 0) {
+        container.innerHTML = '<div class="text-xs opacity-40 italic">No filter terms yet</div>';
+        return;
+    }
+    terms.forEach((term, i) => {
+        const pill = document.createElement('div');
+        pill.className = 'flex items-center gap-1 bg-dark-400/50 rounded px-2 py-0.5 text-xs';
+
+        const label = document.createElement('span');
+        label.className = 'opacity-75';
+        label.textContent = term;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'opacity-40 hover:opacity-100 hover:text-red-400 cursor-pointer ml-1';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', () => {
+            removeFilterTerm(i);
+            renderFilterList(container);
+        });
+
+        pill.appendChild(label);
+        pill.appendChild(removeBtn);
+        container.appendChild(pill);
+    });
+}
+
+// ── Tip link ────────────────────────────────────────────────────────
+
+function wireUpTipLink(contentArea) {
+    contentArea.querySelector('#ftl-tip-link')?.addEventListener('click', () => {
+        contentArea.remove();
+        document.dispatchEvent(new CustomEvent('modalClose'));
+        setTimeout(() => {
+            document.dispatchEvent(new CustomEvent('modalOpen', {
+                detail: {
+                    modal: 'tip',
+                    data: JSON.stringify({
+                        userId: '3bd89a72-5aa2-4ad8-b461-71516bd6b4d5',
+                        displayName: 'BarryThePirate'
+                    }),
+                }
+            }));
+        }, 50);
+    });
+}
