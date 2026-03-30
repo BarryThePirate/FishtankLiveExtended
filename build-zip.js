@@ -116,9 +116,26 @@ if (fs.existsSync(zipPath)) {
 
 try {
     if (isWindows) {
-        // Use PowerShell Compress-Archive (built into Windows 10+)
-        const psCmd = `Compress-Archive -Path '${tempDir}${path.sep}*' -DestinationPath '${zipPath}' -Force`;
-        execSync(`powershell -NoProfile -Command "${psCmd}"`, { stdio: 'pipe' });
+        // Build the zip entry by entry using .NET ZipFileExtensions
+        // to ensure forward-slash paths (Firefox rejects backslashes).
+        const psScriptPath = path.join(os.tmpdir(), `ftl-zip-${Date.now()}.ps1`);
+        const lines = [
+            `Add-Type -AssemblyName System.IO.Compression`,
+            `Add-Type -AssemblyName System.IO.Compression.FileSystem`,
+            `$zip = [System.IO.Compression.ZipFile]::Open('${zipPath}', 'Create')`,
+        ];
+        for (const f of files) {
+            const absPath = path.join(tempDir, f).replace(/\//g, '\\');
+            const entryName = f.replace(/\\/g, '/');
+            lines.push(`[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, '${absPath}', '${entryName}') | Out-Null`);
+        }
+        lines.push(`$zip.Dispose()`);
+        fs.writeFileSync(psScriptPath, lines.join('\n'));
+        try {
+            execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psScriptPath}"`, { stdio: 'pipe' });
+        } finally {
+            fs.unlinkSync(psScriptPath);
+        }
     } else {
         // Use zip command on macOS/Linux
         execSync(`cd "${tempDir}" && zip -r "${zipPath}" .`, { stdio: 'pipe' });
