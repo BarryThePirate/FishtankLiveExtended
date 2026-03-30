@@ -203,7 +203,7 @@ function endorsementBadge(endorsement) {
  */
 function timeDiv(timestamp) {
     const div = document.createElement('div');
-    div.className = 'font-secondary text-xs opacity-30 leading-none tracking-wide text-right mt-1 text-shadow-[1px_1px_0_#000000]';
+    div.className = 'font-secondary text-xs text-light-400/50 leading-none tracking-wide text-right mt-1 text-shadow-[1px_1px_0_#000000]';
     div.textContent = formatTimestamp(timestamp);
     return div;
 }
@@ -215,7 +215,7 @@ function timeDiv(timestamp) {
 function logRow(role) {
     const row = document.createElement('div');
     const bg = role && ROLE_STYLES[role] ? ROLE_STYLES[role].bg : '';
-    row.className = `group flex flex-col p-1 md:p-2 hover:bg-white/5 border-b-1 border-dark-400/25 last:border-0 ${bg}`;
+    row.className = `group flex flex-col p-1 md:p-2 hover:bg-white/5 ${bg}`;
     return row;
 }
 
@@ -329,7 +329,7 @@ function playButton(audioUrl) {
  */
 function compactRow() {
     const row = document.createElement('div');
-    row.className = 'flex gap-2 px-2 py-1.5 border-b-1 border-dark-400/25 last:border-0';
+    row.className = 'flex gap-2 px-2 py-1.5 hover:bg-white/5';
     return row;
 }
 
@@ -522,7 +522,7 @@ export function buildRoleRow(entry) {
 
 export function buildAdminRow(entry) {
     const row = document.createElement('div');
-    row.className = 'group flex flex-col p-1 md:p-2 hover:bg-white/5 border-b-1 border-dark-400/25 last:border-0';
+    row.className = 'group flex flex-col p-1 md:p-2 hover:bg-white/5';
 
     const topLine = document.createElement('div');
     topLine.className = 'flex gap-1';

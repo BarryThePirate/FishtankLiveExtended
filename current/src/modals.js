@@ -24,20 +24,35 @@ export function setCurrentUsername(name) {
     currentUsername = name;
 }
 
+/**
+ * Dispatch a CustomEvent that works in both Chrome and Firefox.
+ * Firefox content scripts need cloneInto() to make the detail
+ * object accessible to the page's JavaScript — without it, the
+ * page gets "Permission denied to access property" errors.
+ * cloneInto is a Firefox-only global; on Chrome it doesn't exist
+ * and we just pass the detail through normally.
+ */
+function dispatchPageEvent(eventName, detail = {}) {
+    const safeDetail = typeof cloneInto === 'function'
+        ? cloneInto(detail, document.defaultView)
+        : detail;
+    document.dispatchEvent(new CustomEvent(eventName, { detail: safeDetail }));
+}
+
 // ── Generic modal open helper ───────────────────────────────────────
 
 export function openModal(modalName, data = {}) {
     if (document.getElementById('modal')) {
-        document.dispatchEvent(new CustomEvent('modalClose'));
+        dispatchPageEvent('modalClose');
         setTimeout(() => {
-            document.dispatchEvent(new CustomEvent('modalOpen', {
-                detail: { modal: modalName, data: JSON.stringify(data) }
-            }));
+            dispatchPageEvent('modalOpen', {
+                modal: modalName, data: JSON.stringify(data)
+            });
         }, 50);
     } else {
-        document.dispatchEvent(new CustomEvent('modalOpen', {
-            detail: { modal: modalName, data: JSON.stringify(data) }
-        }));
+        dispatchPageEvent('modalOpen', {
+            modal: modalName, data: JSON.stringify(data)
+        });
     }
 }
 
@@ -99,17 +114,15 @@ export function tryInjectDropdownButton() {
 
 export function openSettingsModal() {
     if (document.getElementById('modal')) {
-        document.dispatchEvent(new CustomEvent('modalClose'));
+        dispatchPageEvent('modalClose');
         setTimeout(openSettingsModal, 50);
         return;
     }
 
-    document.dispatchEvent(new CustomEvent('modalOpen', {
-        detail: {
-            modal: 'ftlExtended',
-            data: JSON.stringify({}),
-        }
-    }));
+    dispatchPageEvent('modalOpen', {
+        modal: 'ftlExtended',
+        data: JSON.stringify({}),
+    });
 
     // One-shot observer on body to find the modal element, then disconnect
     const observer = new MutationObserver(() => {
@@ -198,7 +211,7 @@ function buildSettingsContent(modal) {
                     <button data-ftl-log-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
                 </div>
             </div>
-            <div data-ftl-log-content class="relative flex flex-col gap-2 w-full bg-dark-700/25 border-2 border-dark-300/50 rounded-lg overflow-y-auto py-2 text-light-text text-shadow-lg shadow-panel-soft" style="height: 600px; overflow-x: hidden; scrollbar-width: thin; scrollbar-gutter: stable both-edges;">
+            <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 600px; overflow-x: hidden; scrollbar-width: thin;">
                 <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
             </div>
         </div>
@@ -441,17 +454,15 @@ function renderFilterList(container) {
 function wireUpTipLink(contentArea) {
     contentArea.querySelector('#ftl-tip-link')?.addEventListener('click', () => {
         contentArea.remove();
-        document.dispatchEvent(new CustomEvent('modalClose'));
+        dispatchPageEvent('modalClose');
         setTimeout(() => {
-            document.dispatchEvent(new CustomEvent('modalOpen', {
-                detail: {
-                    modal: 'tip',
-                    data: JSON.stringify({
-                        userId: '3bd89a72-5aa2-4ad8-b461-71516bd6b4d5',
-                        displayName: 'BarryThePirate'
-                    }),
-                }
-            }));
+            dispatchPageEvent('modalOpen', {
+                modal: 'tip',
+                data: JSON.stringify({
+                    userId: '3bd89a72-5aa2-4ad8-b461-71516bd6b4d5',
+                    displayName: 'BarryThePirate'
+                }),
+            });
         }, 50);
     });
 }
