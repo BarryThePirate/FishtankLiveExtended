@@ -9,6 +9,7 @@ const DEFAULTS = {
     showRecipeWhenConsuming: true,
     revealHiddenZones: true,
     enhancedTheatreMode: true,
+    enableInventorySearch: true,
     adminLogSize: 200,
     staffLogSize: 200,
     modLogSize: 200,

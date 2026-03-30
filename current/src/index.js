@@ -25,6 +25,7 @@ import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints
 import { openSettingsModal, openModal, tryInjectDropdownButton, setCurrentUsername } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
+import { tryInjectInventorySearch, tryInjectCraftingItemSearch } from './inventory.js';
 
 const DEBUG = false;
 const log = (...args) => DEBUG && console.log('[FTL Extended]', ...args);
@@ -173,9 +174,6 @@ site.whenReady(async () => {
     // ── TTS via Socket.IO ───────────────────────────────────────────
 
     socket.on('tts:update', (data) => {
-        // Only log approved TTS (skip pending/rejected)
-        if (data.status && data.status !== 'approved') return;
-
         const msg = {
             username: data.displayName || '???',
             message: data.message || '',
@@ -191,7 +189,7 @@ site.whenReady(async () => {
 
     // ── SFX via Socket.IO ───────────────────────────────────────────
 
-    socket.on('sfx:insert', (data) => {
+    socket.on('sfx:update', (data) => {
         // Extract audio filename from URL for slim storage
         // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
         const sfxUrl = data.url || '';
@@ -218,7 +216,7 @@ site.whenReady(async () => {
     // Update the timestamp on any socket event
     socket.on('chat:message', () => { lastSocketEvent = Date.now(); });
     socket.on('tts:update',   () => { lastSocketEvent = Date.now(); });
-    socket.on('sfx:insert',   () => { lastSocketEvent = Date.now(); });
+    socket.on('sfx:update',   () => { lastSocketEvent = Date.now(); });
     socket.on('chat:presence', () => { lastSocketEvent = Date.now(); });
     socket.on('presence',      () => { lastSocketEvent = Date.now(); });
 
@@ -300,6 +298,8 @@ site.whenReady(async () => {
 
     document.addEventListener('click', () => {
         setTimeout(tryInjectDropdownButton, 100);
+        setTimeout(tryInjectInventorySearch, 100);
+        setTimeout(tryInjectCraftingItemSearch, 100);
     });
 
     // ── Hidden clickable zone detection ────────────────────────────────

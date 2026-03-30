@@ -24,18 +24,15 @@ export function setCurrentUsername(name) {
     currentUsername = name;
 }
 
-/**
- * Dispatch a CustomEvent that works in both Chrome and Firefox.
- * Firefox content scripts need cloneInto() to make the detail
- * object accessible to the page's JavaScript — without it, the
- * page gets "Permission denied to access property" errors.
- * cloneInto is a Firefox-only global; on Chrome it doesn't exist
- * and we just pass the detail through normally.
- */
+// ── Firefox-safe event dispatch ──────────────────────────────────────
+// Firefox content scripts run in a separate JS realm. CustomEvent detail
+// objects created here are not accessible from the page context, causing
+// "Permission denied to access property" errors. cloneInto() copies the
+// detail into the page realm so NextJS handlers can read it.
+
 function dispatchPageEvent(eventName, detail = {}) {
     const safeDetail = typeof cloneInto === 'function'
-        ? cloneInto(detail, document.defaultView)
-        : detail;
+        ? cloneInto(detail, document.defaultView) : detail;
     document.dispatchEvent(new CustomEvent(eventName, { detail: safeDetail }));
 }
 
@@ -45,14 +42,10 @@ export function openModal(modalName, data = {}) {
     if (document.getElementById('modal')) {
         dispatchPageEvent('modalClose');
         setTimeout(() => {
-            dispatchPageEvent('modalOpen', {
-                modal: modalName, data: JSON.stringify(data)
-            });
+            dispatchPageEvent('modalOpen', { modal: modalName, data: JSON.stringify(data) });
         }, 50);
     } else {
-        dispatchPageEvent('modalOpen', {
-            modal: modalName, data: JSON.stringify(data)
-        });
+        dispatchPageEvent('modalOpen', { modal: modalName, data: JSON.stringify(data) });
     }
 }
 
@@ -167,6 +160,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Keyboard Shortcuts', 'enableKeyboardShortcuts', getSetting('enableKeyboardShortcuts'), 'Q P H X C M S &nbsp;(E always works)')}
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
+            ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
         </div>
 
         <!-- Crafting tab -->
@@ -175,7 +169,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
+            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="text-link">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -220,10 +214,10 @@ function buildSettingsContent(modal) {
         <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
             <div class="flex gap-1 font-bold justify-center flex-wrap">
                 <span>Like this extension?</span>
-                <span class="cursor-pointer text-primary font-heavy hover:underline" id="ftl-tip-link">TIP</span>
+                <span class="cursor-pointer text-link" id="ftl-tip-link">TIP</span>
                 <span class="opacity-40 mx-1">·</span>
                 <span>Want to contribute?</span>
-                <a class="cursor-pointer text-primary font-heavy hover:underline" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
+                <a class="cursor-pointer text-link" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
             </div>
         </div>
     `;

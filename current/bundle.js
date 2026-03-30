@@ -6005,6 +6005,7 @@
       showRecipeWhenConsuming: true,
       revealHiddenZones: true,
       enhancedTheatreMode: true,
+      enableInventorySearch: true,
       adminLogSize: 200,
       staffLogSize: 200,
       modLogSize: 200,
@@ -7175,18 +7176,15 @@
       currentUsername$1 = name;
   }
 
-  /**
-   * Dispatch a CustomEvent that works in both Chrome and Firefox.
-   * Firefox content scripts need cloneInto() to make the detail
-   * object accessible to the page's JavaScript — without it, the
-   * page gets "Permission denied to access property" errors.
-   * cloneInto is a Firefox-only global; on Chrome it doesn't exist
-   * and we just pass the detail through normally.
-   */
+  // ── Firefox-safe event dispatch ──────────────────────────────────────
+  // Firefox content scripts run in a separate JS realm. CustomEvent detail
+  // objects created here are not accessible from the page context, causing
+  // "Permission denied to access property" errors. cloneInto() copies the
+  // detail into the page realm so NextJS handlers can read it.
+
   function dispatchPageEvent(eventName, detail = {}) {
       const safeDetail = typeof cloneInto === 'function'
-          ? cloneInto(detail, document.defaultView)
-          : detail;
+          ? cloneInto(detail, document.defaultView) : detail;
       document.dispatchEvent(new CustomEvent(eventName, { detail: safeDetail }));
   }
 
@@ -7196,14 +7194,10 @@
       if (document.getElementById('modal')) {
           dispatchPageEvent('modalClose');
           setTimeout(() => {
-              dispatchPageEvent('modalOpen', {
-                  modal: modalName, data: JSON.stringify(data)
-              });
+              dispatchPageEvent('modalOpen', { modal: modalName, data: JSON.stringify(data) });
           }, 50);
       } else {
-          dispatchPageEvent('modalOpen', {
-              modal: modalName, data: JSON.stringify(data)
-          });
+          dispatchPageEvent('modalOpen', { modal: modalName, data: JSON.stringify(data) });
       }
   }
 
@@ -7318,6 +7312,7 @@
             ${toggleRow('Keyboard Shortcuts', 'enableKeyboardShortcuts', getSetting('enableKeyboardShortcuts'), 'Q P H X C M S &nbsp;(E always works)')}
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
+            ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
         </div>
 
         <!-- Crafting tab -->
@@ -7326,7 +7321,7 @@
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
+            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="text-link">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -7371,10 +7366,10 @@
         <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
             <div class="flex gap-1 font-bold justify-center flex-wrap">
                 <span>Like this extension?</span>
-                <span class="cursor-pointer text-primary font-heavy hover:underline" id="ftl-tip-link">TIP</span>
+                <span class="cursor-pointer text-link" id="ftl-tip-link">TIP</span>
                 <span class="opacity-40 mx-1">·</span>
                 <span>Want to contribute?</span>
-                <a class="cursor-pointer text-primary font-heavy hover:underline" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
+                <a class="cursor-pointer text-link" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
             </div>
         </div>
     `;
@@ -8235,6 +8230,142 @@
   }
 
   /**
+   * inventory.js — Inventory and item grid search
+   *
+   * Injects search inputs into:
+   * 1. The inventory popup (floating-ui-portal, NOT a modal)
+   * 2. The crafting modal's "Select Item" overlay (inside #modal)
+   *
+   * Both grids use img[alt] for item names — the same filtering logic
+   * works for both. Empty slots are hidden while searching.
+   *
+   * Detection: uses a click listener + short poll. NO persistent body observers.
+   */
+
+
+  let inventoryInjected = false;
+
+  // ── Shared: create a search input and wire up filtering ─────────────
+
+  function createSearchInput(placeholder, items, container, insertAfter) {
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('data-ftl-sdk', 'item-search');
+      wrapper.className = 'px-1 pb-1';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = placeholder;
+      input.className = 'font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-1';
+
+      // Prevent keyboard shortcuts from firing while typing
+      input.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+      });
+
+      wrapper.appendChild(input);
+      insertAfter.insertAdjacentElement('afterend', wrapper);
+
+      input.addEventListener('input', () => {
+          const query = input.value.trim().toLowerCase();
+
+          for (const item of items) {
+              const img = item.querySelector('img');
+              if (!img) {
+                  // Empty slot — hide when searching, show when cleared
+                  item.style.display = query ? 'none' : '';
+                  continue;
+              }
+
+              const name = (img.alt || '').toLowerCase();
+              const match = !query || name.includes(query);
+              item.style.display = match ? '' : 'none';
+          }
+
+          // Pack visible items to the top of the grid
+          container.style.alignContent = query ? 'start' : '';
+      });
+
+      // Auto-focus
+      setTimeout(() => input.focus(), 50);
+
+      return wrapper;
+  }
+
+  // ── Inventory popup (floating-ui-portal) ────────────────────────────
+
+  function tryInjectInventorySearch() {
+      if (inventoryInjected) return;
+      if (!getSetting('enableInventorySearch')) return;
+
+      const portals = document.querySelectorAll('[data-floating-ui-portal]');
+      for (const portal of portals) {
+          const dialog = portal.querySelector('[role="dialog"]');
+          if (!dialog) continue;
+
+          const header = dialog.querySelector('.flex.h-\\[32px\\].items-center');
+          if (!header) continue;
+          const title = header.querySelector('.font-bold');
+          if (!title || title.textContent.trim() !== 'Inventory') continue;
+
+          const grid = dialog.querySelector('[role="listbox"]');
+          if (!grid) continue;
+
+          if (dialog.querySelector('[data-ftl-sdk="item-search"]')) {
+              inventoryInjected = true;
+              return;
+          }
+
+          const items = grid.querySelectorAll('[role="option"]');
+          createSearchInput('Search inventory...', items, grid, header);
+          inventoryInjected = true;
+
+          // Clean up when inventory closes
+          const closeObserver = new MutationObserver(() => {
+              if (!portal.contains(dialog)) {
+                  closeObserver.disconnect();
+                  inventoryInjected = false;
+              }
+          });
+          closeObserver.observe(portal, { childList: true });
+          return;
+      }
+  }
+
+  // ── Crafting item select (inside #modal) ────────────────────────────
+
+  function tryInjectCraftingItemSearch() {
+      if (!getSetting('enableInventorySearch')) return;
+
+      const modal = document.getElementById('modal');
+      if (!modal) return;
+
+      // Find "Select Item" title — it's a .font-bold inside the item select overlay
+      const titles = modal.querySelectorAll('.font-bold');
+      let title = null;
+      for (const t of titles) {
+          if (t.textContent.trim() === 'Select Item') {
+              title = t;
+              break;
+          }
+      }
+      if (!title) return;
+
+      // The overlay is the parent container with the grid
+      const overlay = title.closest('.absolute');
+      if (!overlay) return;
+
+      // Already injected
+      if (overlay.querySelector('[data-ftl-sdk="item-search"]')) return;
+
+      const grid = overlay.querySelector('.grid.grid-cols-5');
+      if (!grid) return;
+
+      // Get ALL direct children of the grid — both item buttons and empty placeholder divs
+      const items = grid.children;
+      createSearchInput('Search items...', items, grid, title);
+  }
+
+  /**
    * index.js — FTL Extended entry point (current site)
    *
    * This file is the orchestrator. It wires up the SDK, registers
@@ -8396,9 +8527,6 @@
       // ── TTS via Socket.IO ───────────────────────────────────────────
 
       on$1('tts:update', (data) => {
-          // Only log approved TTS (skip pending/rejected)
-          if (data.status && data.status !== 'approved') return;
-
           const msg = {
               username: data.displayName || '???',
               message: data.message || '',
@@ -8412,7 +8540,7 @@
 
       // ── SFX via Socket.IO ───────────────────────────────────────────
 
-      on$1('sfx:insert', (data) => {
+      on$1('sfx:update', (data) => {
           // Extract audio filename from URL for slim storage
           // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
           const sfxUrl = data.url || '';
@@ -8437,7 +8565,7 @@
       // Update the timestamp on any socket event
       on$1('chat:message', () => { lastSocketEvent = Date.now(); });
       on$1('tts:update',   () => { lastSocketEvent = Date.now(); });
-      on$1('sfx:insert',   () => { lastSocketEvent = Date.now(); });
+      on$1('sfx:update',   () => { lastSocketEvent = Date.now(); });
       on$1('chat:presence', () => { lastSocketEvent = Date.now(); });
       on$1('presence',      () => { lastSocketEvent = Date.now(); });
 
@@ -8518,6 +8646,8 @@
 
       document.addEventListener('click', () => {
           setTimeout(tryInjectDropdownButton, 100);
+          setTimeout(tryInjectInventorySearch, 100);
+          setTimeout(tryInjectCraftingItemSearch, 100);
       });
 
       // ── Hidden clickable zone detection ────────────────────────────────
