@@ -37,6 +37,8 @@ let modLog     = [];
 let fishLog    = [];
 let adminLog   = [];
 let adminFilter = [];
+let unreadPings = 0;
+let onPingCountChange = null;
 
 // ── Initialise (load from storage) ──────────────────────────────────
 
@@ -67,6 +69,19 @@ export function getLog(type) {
 }
 
 export function getAdminFilter() { return adminFilter; }
+
+// ── Unread pings ────────────────────────────────────────────────────
+
+export function getUnreadPings() { return unreadPings; }
+
+export function resetUnreadPings() {
+    unreadPings = 0;
+    if (onPingCountChange) onPingCountChange(0);
+}
+
+export function setOnPingCountChange(callback) {
+    onPingCountChange = callback;
+}
 
 // ── Size key mapping ────────────────────────────────────────────────
 
@@ -164,6 +179,9 @@ export function logPing(msg) {
     };
     pushEntry(pingsLog, entry, 'pings');
     liveUpdate('pings', buildPingsRow(entry));
+
+    unreadPings++;
+    if (onPingCountChange) onPingCountChange(unreadPings);
 }
 
 export function logRoleMessage(msg) {

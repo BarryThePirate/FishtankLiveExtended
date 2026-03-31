@@ -14,7 +14,7 @@ import { toggleRow, logPill } from './ui-helpers.js';
 import { renderRecipeResults } from './crafting.js';
 import {
     getLog, getAdminFilter, renderLog, clearLog, resizeLog,
-    addFilterTerm, removeFilterTerm,
+    addFilterTerm, removeFilterTerm, resetUnreadPings,
 } from './logging.js';
 import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
 
@@ -131,7 +131,8 @@ export function tryInjectPingButton() {
     wrapper.setAttribute('data-ftl-sdk', 'ping-btn');
 
     const btn = document.createElement('button');
-    btn.className = 'bg-gradient-to-r from-primary-400 to-primary-500/90 active:to-primary-600/75 p-0.5 inline-flex items-center justify-center cursor-pointer rounded-md hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary pointer-events-auto';
+    // Starts dimmed — opacity-50 + saturate-0
+    btn.className = 'bg-gradient-to-r from-primary-400 to-primary-500/90 active:to-primary-600/75 p-0.5 inline-flex items-center justify-center cursor-pointer rounded-md hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary pointer-events-auto transition-[opacity,filter] duration-300 opacity-50 saturate-0';
     btn.type = 'button';
     btn.title = 'View pings';
     btn.innerHTML = `
@@ -151,6 +152,22 @@ export function tryInjectPingButton() {
     btnContainer.insertBefore(wrapper, btnContainer.firstChild);
 }
 
+/**
+ * Update the ping button state — dimmed when no unread, lit when unread.
+ * Called by the ping count change callback from logging.js.
+ */
+export function updatePingBadge(count) {
+    const wrapper = document.querySelector('[data-ftl-sdk="ping-btn"]');
+    const btn = wrapper?.querySelector('button');
+    if (!btn) return;
+
+    if (count > 0) {
+        btn.classList.remove('opacity-50', 'saturate-0');
+    } else {
+        btn.classList.add('opacity-50', 'saturate-0');
+    }
+}
+
 // ── Settings modal ──────────────────────────────────────────────────
 
 let pendingTab = null;
@@ -165,6 +182,7 @@ export function openSettingsModal() {
 export function openSettingsModalToTab(tabName, logType = null) {
     pendingTab = tabName;
     pendingLog = logType;
+    if (logType === 'pings') resetUnreadPings();
     openSettingsModalInternal();
 }
 
@@ -232,7 +250,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="text-link">fishtank.guru</a></div>
+            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -268,7 +286,7 @@ function buildSettingsContent(modal) {
                     <button data-ftl-log-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
                 </div>
             </div>
-            <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 600px; overflow-x: hidden; scrollbar-width: thin;">
+            <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 500px; overflow-x: hidden; scrollbar-width: thin;">
                 <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
             </div>
         </div>
@@ -277,10 +295,10 @@ function buildSettingsContent(modal) {
         <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
             <div class="flex gap-1 font-bold justify-center flex-wrap">
                 <span>Like this extension?</span>
-                <span class="cursor-pointer text-link" id="ftl-tip-link">TIP</span>
+                <span class="cursor-pointer text-primary font-heavy hover:underline" id="ftl-tip-link">TIP</span>
                 <span class="opacity-40 mx-1">·</span>
                 <span>Want to contribute?</span>
-                <a class="cursor-pointer text-link" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
+                <a class="cursor-pointer text-primary font-heavy hover:underline" href="https://github.com/BarryThePirate/FishtankLiveExtended" target="_blank">GITHUB</a>
             </div>
         </div>
     `;

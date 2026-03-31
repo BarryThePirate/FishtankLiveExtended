@@ -20,9 +20,9 @@ import { site, ui, socket, player } from '../../ftl-ext-sdk/src/index.js';
 import { io } from 'socket.io-client';
 import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
-import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast } from './logging.js';
+import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast, setOnPingCountChange } from './logging.js';
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
-import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, setCurrentUsername } from './modals.js';
+import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch } from './inventory.js';
@@ -309,6 +309,7 @@ site.whenReady(async () => {
     // ── Ping button in chat header ──────────────────────────────────
 
     tryInjectPingButton();
+    setOnPingCountChange(updatePingBadge);
 
     // ── Theatre mode button intercept ───────────────────────────────
 
