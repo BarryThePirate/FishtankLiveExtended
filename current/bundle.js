@@ -55,6 +55,21 @@
   const listeners = new Map();
 
   /**
+   * Known Socket.IO event names used by the site.
+   * Discovered by inspecting WebSocket frames.
+   */
+  const EVENTS = {
+    // Chat
+    CHAT_MESSAGE: 'chat:message',
+    // TTS
+    TTS_INSERT: 'tts:insert',
+    TTS_UPDATE: 'tts:update',
+
+    // SFX
+    SFX_INSERT: 'sfx:insert',
+    SFX_UPDATE: 'sfx:update'};
+
+  /**
    * Connect to the fishtank.live WebSocket server.
    *
    * This creates an independent connection using Socket.IO v4 with
@@ -514,6 +529,270 @@
       console.warn('[ftl-ext-sdk] Storage write failed:', e.message);
       return false;
     }
+  }
+
+  /**
+   * chat/messages.js — Chat Message Interception (Normalised)
+   *
+   * Listens for chat messages, TTS, and SFX events via the SDK's
+   * Socket.IO connection. Normalises raw socket data into clean,
+   * consistent objects so consumers don't need to handle quirks
+   * like array-wrapped messages, role flag priority, or mention
+   * object formats.
+   *
+   * TTS and SFX events are deduplicated automatically — the socket
+   * fires multiple times per event (status changes), so only the
+   * first occurrence is delivered to callbacks.
+   *
+   * Socket listeners are registered lazily on the first callback
+   * registration — no need to call startListening() manually.
+   *
+   * RAW DATA ACCESS:
+   * Every normalised object includes a `raw` property containing
+   * the original socket data for advanced use cases.
+   */
+
+
+  // ── Callback registries ─────────────────────────────────────────────
+
+  const messageCallbacks = new Set();
+  const ttsCallbacks = new Set();
+  const sfxCallbacks = new Set();
+
+  // ── Deduplication state ─────────────────────────────────────────────
+
+  const recentTtsIds = new Set();
+  const recentSfxKeys = new Set();
+  const DEDUP_CAP = 500;
+
+  /**
+   * Add a key to a dedup set, evicting the oldest entry if over cap.
+   * Returns true if the key is new, false if it was a duplicate.
+   */
+  function dedupAdd(set, key) {
+    if (set.has(key)) return false;
+    set.add(key);
+    if (set.size > DEDUP_CAP) {
+      const first = set.values().next().value;
+      set.delete(first);
+    }
+    return true;
+  }
+
+  // ── Lazy listener init ──────────────────────────────────────────────
+
+  let listenersStarted = false;
+
+  function ensureListening() {
+    if (listenersStarted) return;
+    listenersStarted = true;
+
+    // Chat messages
+    on$1(EVENTS.CHAT_MESSAGE, (data) => {
+      const normalised = normaliseChat(data);
+      if (!normalised) return;
+      for (const cb of messageCallbacks) {
+        try { cb(normalised); }
+        catch (e) { console.error('[ftl-ext-sdk] Chat message callback error:', e); }
+      }
+    });
+
+    // TTS — server sends tts:insert and/or tts:update (inconsistent,
+    // likely tied to approval flow). Listen on both, dedup handles overlap.
+    const ttsHandler = (data) => {
+      const normalised = normaliseTts(data);
+      if (!normalised) return;
+      for (const cb of ttsCallbacks) {
+        try { cb(normalised); }
+        catch (e) { console.error('[ftl-ext-sdk] TTS callback error:', e); }
+      }
+    };
+    on$1(EVENTS.TTS_INSERT, ttsHandler);
+    on$1(EVENTS.TTS_UPDATE, ttsHandler);
+
+    // SFX — same situation: server sends sfx:insert and/or sfx:update.
+    const sfxHandler = (data) => {
+      const normalised = normaliseSfx(data);
+      if (!normalised) return;
+      for (const cb of sfxCallbacks) {
+        try { cb(normalised); }
+        catch (e) { console.error('[ftl-ext-sdk] SFX callback error:', e); }
+      }
+    };
+    on$1(EVENTS.SFX_INSERT, sfxHandler);
+    on$1(EVENTS.SFX_UPDATE, sfxHandler);
+  }
+
+  // ── Normalisation: Chat ─────────────────────────────────────────────
+
+  /**
+   * Normalise a raw chat:message socket event.
+   *
+   * Handles:
+   * - Array unwrapping (socket delivers [{...}] not {...})
+   * - Role priority: staff > mod > fish > grandMarshal > epic > null
+   * - Avatar filename extraction from CDN URL
+   * - Mention normalisation to [{displayName, userId}]
+   */
+  function normaliseChat(data) {
+    const raw = Array.isArray(data) ? data[0] : data;
+    if (!raw) return null;
+
+    // Avatar: extract filename from full CDN URL
+    // "https://cdn.fishtank.live/avatars/rchl.png" → "rchl.png"
+    const photoURL = raw.user?.photoURL || '';
+    const avatar = photoURL.split('/').pop() || null;
+
+    // Role priority: staff > mod > fish > grandMarshal > epic > null
+    const meta = raw.metadata || {};
+    const role = meta.isAdmin ? 'staff'
+        : meta.isMod ? 'mod'
+            : meta.isFish ? 'fish'
+                : meta.isGrandMarshall ? 'grandMarshal'
+                    : meta.isEpic ? 'epic'
+                        : null;
+
+    // Normalise mentions to consistent [{displayName, userId}] shape
+    // Raw data sends objects: {displayName, userId}
+    // But could theoretically send strings, so handle both
+    const rawMentions = raw.mentions || [];
+    const mentions = rawMentions.map(m => {
+      if (typeof m === 'string') return { displayName: m, userId: null };
+      return { displayName: m.displayName || '', userId: m.userId || null };
+    });
+
+    return {
+      username:    raw.user?.displayName || '???',
+      message:     raw.message || '',
+      role,
+      colour:      raw.user?.customUsernameColor || null,
+      avatar,
+      clan:        raw.user?.clan || null,
+      endorsement: raw.user?.endorsement || null,
+      mentions,
+      raw,
+    };
+  }
+
+  // ── Normalisation: TTS ──────────────────────────────────────────────
+
+  /**
+   * Normalise a raw tts:update socket event.
+   * Deduplicates by TTS ID — the socket fires for each status change.
+   */
+  function normaliseTts(data) {
+    if (!data) return null;
+
+    const ttsId = data.id || null;
+    if (ttsId && !dedupAdd(recentTtsIds, ttsId)) return null;
+
+    return {
+      username: data.displayName || '???',
+      message:  data.message || '',
+      voice:    data.voice || '?',
+      room:     data.room || '?',
+      audioId:  ttsId,
+      clanTag:  data.clanTag || null,
+      raw:      data,
+    };
+  }
+
+  // ── Normalisation: SFX ──────────────────────────────────────────────
+
+  /**
+   * Normalise a raw sfx:update socket event.
+   * Deduplicates by ID or composite key (username:sound:room).
+   */
+  function normaliseSfx(data) {
+    if (!data) return null;
+
+    const sfxKey = data.id || `${data.displayName}:${data.sound || data.message}:${data.room}`;
+    if (!dedupAdd(recentSfxKeys, sfxKey)) return null;
+
+    // Extract audio filename from CDN URL for slim storage
+    const sfxUrl = data.url || '';
+    const audioFile = sfxUrl.split('/').pop() || null;
+
+    return {
+      username:  data.displayName || '???',
+      message:   data.sound || data.message || '???',
+      room:      data.room || '?',
+      audioFile,
+      clanTag:   data.clanTag || null,
+      raw:       data,
+    };
+  }
+
+  // ── Public API: callback registration ───────────────────────────────
+
+  /**
+   * Register a callback for new chat messages.
+   *
+   * The callback receives a normalised message object:
+   * {
+   *   username: string,          // Display name
+   *   message: string,           // Message text
+   *   role: string|null,         // 'staff' | 'mod' | 'fish' | 'grandMarshal' | 'epic' | null
+   *   colour: string|null,       // Custom username colour (hex)
+   *   avatar: string|null,       // Avatar filename (e.g. "rchl.png")
+   *   clan: string|null,         // Clan tag
+   *   endorsement: string|null,  // Endorsement badge text
+   *   mentions: Array<{displayName: string, userId: string|null}>,
+   *   raw: Object,               // Original socket data
+   * }
+   *
+   * @param {Function} callback - Called with the normalised message
+   * @returns {Function} Unsubscribe function
+   */
+  function onMessage(callback) {
+    ensureListening();
+    messageCallbacks.add(callback);
+    return () => messageCallbacks.delete(callback);
+  }
+
+  /**
+   * Register a callback for TTS events (deduplicated).
+   *
+   * The callback receives a normalised TTS object:
+   * {
+   *   username: string,      // Display name of sender
+   *   message: string,       // TTS message text
+   *   voice: string,         // Voice name (e.g. "Brainrot")
+   *   room: string,          // Room code (e.g. "brrr-5")
+   *   audioId: string|null,  // TTS ID (for CDN audio URL)
+   *   clanTag: string|null,  // Sender's clan tag
+   *   raw: Object,           // Original socket data
+   * }
+   *
+   * @param {Function} callback - Called with the normalised TTS object
+   * @returns {Function} Unsubscribe function
+   */
+  function onTTS(callback) {
+    ensureListening();
+    ttsCallbacks.add(callback);
+    return () => ttsCallbacks.delete(callback);
+  }
+
+  /**
+   * Register a callback for SFX events (deduplicated).
+   *
+   * The callback receives a normalised SFX object:
+   * {
+   *   username: string,       // Display name of sender
+   *   message: string,        // Sound name
+   *   room: string,           // Room code
+   *   audioFile: string|null, // Audio filename from CDN URL
+   *   clanTag: string|null,   // Sender's clan tag
+   *   raw: Object,            // Original socket data
+   * }
+   *
+   * @param {Function} callback - Called with the normalised SFX object
+   * @returns {Function} Unsubscribe function
+   */
+  function onSFX(callback) {
+    ensureListening();
+    sfxCallbacks.add(callback);
+    return () => sfxCallbacks.delete(callback);
   }
 
   /**
@@ -8658,44 +8937,15 @@
           console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
       }
 
-      // ── Chat messages via Socket.IO ─────────────────────────────────
+      // ── Chat messages via SDK (normalised + structured) ────────────────
 
-      on$1('chat:message', (data) => {
-          // Socket delivers messages wrapped in an array
-          const raw = Array.isArray(data) ? data[0] : data;
-          if (!raw) return;
-
-          // Extract avatar filename from full URL
-          // "https://cdn.fishtank.live/avatars/rchl.png" → "rchl.png"
-          const photoURL = raw.user?.photoURL || '';
-          const avatar = photoURL.split('/').pop() || null;
-
-          // Normalise socket data to the format logging.js expects
-          // Role priority: staff > mod > fish > epic > grandMarshal > normal
-          const msg = {
-              username: raw.user?.displayName || '???',
-              message: raw.message || '',
-              mentions: raw.mentions || [],
-              colour: raw.user?.customUsernameColor || null,
-              avatar,
-              clan: raw.user?.clan || null,
-              endorsement: raw.user?.endorsement || null,
-              role: raw.metadata?.isAdmin ? 'staff'
-                  : raw.metadata?.isMod ? 'mod'
-                      : raw.metadata?.isFish ? 'fish'
-                          : raw.metadata?.isGrandMarshall ? 'grandMarshal'
-                              : raw.metadata?.isEpic ? 'epic'
-                                  : null,
-          };
+      onMessage((msg) => {
+          log('[CHAT]', msg.username, msg.message);
 
           // Pings — chat messages that mention the current user
           if (currentUsername && msg.mentions.length > 0) {
               const lower = currentUsername.toLowerCase();
-              if (msg.mentions.some(m => {
-                  // Mentions from socket are objects: {displayName, userId}
-                  const name = typeof m === 'string' ? m : m.displayName || '';
-                  return name.toLowerCase() === lower;
-              })) {
+              if (msg.mentions.some(m => m.displayName.toLowerCase() === lower)) {
                   logPing(msg);
               }
           }
@@ -8707,61 +8957,17 @@
           }
       });
 
-      // ── TTS via Socket.IO ───────────────────────────────────────────
+      // ── TTS via SDK (normalised + deduplicated) ─────────────────────
 
-      const recentTtsIds = new Set();
-
-      on$1('tts:update', (data) => {
-          // Deduplicate — tts:update fires for each status change (pending, approved, played)
-          const ttsId = data.id || null;
-          if (ttsId) {
-              if (recentTtsIds.has(ttsId)) return;
-              recentTtsIds.add(ttsId);
-              // Cap the set so it doesn't grow forever
-              if (recentTtsIds.size > 500) {
-                  const first = recentTtsIds.values().next().value;
-                  recentTtsIds.delete(first);
-              }
-          }
-
-          const msg = {
-              username: data.displayName || '???',
-              message: data.message || '',
-              voice: data.voice || '?',
-              room: data.room || '?',
-              audioId: ttsId,
-              clanTag: data.clanTag || null,
-          };
+      onTTS((msg) => {
+          log('[TTS]', msg.username, msg.message, msg.voice, msg.room);
           logTts(msg);
       });
 
-      // ── SFX via Socket.IO ───────────────────────────────────────────
+      // ── SFX via SDK (normalised + deduplicated) ─────────────────────
 
-      const recentSfxKeys = new Set();
-
-      on$1('sfx:update', (data) => {
-          // Deduplicate — sfx:update may fire multiple times per sound
-          // No unique ID, so use composite key of id (if present) or username+sound+room
-          const sfxKey = data.id || `${data.displayName}:${data.sound || data.message}:${data.room}`;
-          if (recentSfxKeys.has(sfxKey)) return;
-          recentSfxKeys.add(sfxKey);
-          if (recentSfxKeys.size > 500) {
-              const first = recentSfxKeys.values().next().value;
-              recentSfxKeys.delete(first);
-          }
-
-          // Extract audio filename from URL for slim storage
-          // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
-          const sfxUrl = data.url || '';
-          const audioFile = sfxUrl.split('/').pop() || null;
-
-          const msg = {
-              username: data.displayName || '???',
-              message: data.sound || data.message || '???',
-              room: data.room || '?',
-              audioFile,
-              clanTag: data.clanTag || null,
-          };
+      onSFX((msg) => {
+          log('[SFX]', msg.username, msg.message, msg.room);
           logSfx(msg);
       });
 
@@ -8773,7 +8979,9 @@
 
       // Update the timestamp on any socket event
       on$1('chat:message', () => { lastSocketEvent = Date.now(); });
+      on$1('tts:insert',   () => { lastSocketEvent = Date.now(); });
       on$1('tts:update',   () => { lastSocketEvent = Date.now(); });
+      on$1('sfx:insert',   () => { lastSocketEvent = Date.now(); });
       on$1('sfx:update',   () => { lastSocketEvent = Date.now(); });
       on$1('chat:presence', () => { lastSocketEvent = Date.now(); });
       on$1('presence',      () => { lastSocketEvent = Date.now(); });

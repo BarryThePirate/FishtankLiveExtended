@@ -16,7 +16,7 @@
  * - Socket.IO is an independent connection, no monkey-patching
  */
 
-import { site, ui, socket, player } from '../../ftl-ext-sdk/src/index.js';
+import { site, ui, socket, player, chat } from '../../ftl-ext-sdk/src/index.js';
 import { io } from 'socket.io-client';
 import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
@@ -130,46 +130,15 @@ site.whenReady(async () => {
         console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
     }
 
-    // ── Chat messages via Socket.IO ─────────────────────────────────
+    // ── Chat messages via SDK (normalised + structured) ────────────────
 
-    socket.on('chat:message', (data) => {
-        // Socket delivers messages wrapped in an array
-        const raw = Array.isArray(data) ? data[0] : data;
-        if (!raw) return;
-
-        // Extract avatar filename from full URL
-        // "https://cdn.fishtank.live/avatars/rchl.png" → "rchl.png"
-        const photoURL = raw.user?.photoURL || '';
-        const avatar = photoURL.split('/').pop() || null;
-
-        // Normalise socket data to the format logging.js expects
-        // Role priority: staff > mod > fish > epic > grandMarshal > normal
-        const msg = {
-            username: raw.user?.displayName || '???',
-            message: raw.message || '',
-            mentions: raw.mentions || [],
-            colour: raw.user?.customUsernameColor || null,
-            avatar,
-            clan: raw.user?.clan || null,
-            endorsement: raw.user?.endorsement || null,
-            role: raw.metadata?.isAdmin ? 'staff'
-                : raw.metadata?.isMod ? 'mod'
-                    : raw.metadata?.isFish ? 'fish'
-                        : raw.metadata?.isGrandMarshall ? 'grandMarshal'
-                            : raw.metadata?.isEpic ? 'epic'
-                                : null,
-        };
-
+    chat.messages.onMessage((msg) => {
         log('[CHAT]', msg.username, msg.message);
 
         // Pings — chat messages that mention the current user
         if (currentUsername && msg.mentions.length > 0) {
             const lower = currentUsername.toLowerCase();
-            if (msg.mentions.some(m => {
-                // Mentions from socket are objects: {displayName, userId}
-                const name = typeof m === 'string' ? m : m.displayName || '';
-                return name.toLowerCase() === lower;
-            })) {
+            if (msg.mentions.some(m => m.displayName.toLowerCase() === lower)) {
                 logPing(msg);
             }
         }
@@ -181,64 +150,16 @@ site.whenReady(async () => {
         }
     });
 
-    // ── TTS via Socket.IO ───────────────────────────────────────────
+    // ── TTS via SDK (normalised + deduplicated) ─────────────────────
 
-    const recentTtsIds = new Set();
-
-    socket.on('tts:update', (data) => {
-        // Deduplicate — tts:update fires for each status change (pending, approved, played)
-        const ttsId = data.id || null;
-        if (ttsId) {
-            if (recentTtsIds.has(ttsId)) return;
-            recentTtsIds.add(ttsId);
-            // Cap the set so it doesn't grow forever
-            if (recentTtsIds.size > 500) {
-                const first = recentTtsIds.values().next().value;
-                recentTtsIds.delete(first);
-            }
-        }
-
-        const msg = {
-            username: data.displayName || '???',
-            message: data.message || '',
-            voice: data.voice || '?',
-            room: data.room || '?',
-            audioId: ttsId,
-            clanTag: data.clanTag || null,
-        };
-
+    chat.messages.onTTS((msg) => {
         log('[TTS]', msg.username, msg.message, msg.voice, msg.room);
         logTts(msg);
     });
 
-    // ── SFX via Socket.IO ───────────────────────────────────────────
+    // ── SFX via SDK (normalised + deduplicated) ─────────────────────
 
-    const recentSfxKeys = new Set();
-
-    socket.on('sfx:update', (data) => {
-        // Deduplicate — sfx:update may fire multiple times per sound
-        // No unique ID, so use composite key of id (if present) or username+sound+room
-        const sfxKey = data.id || `${data.displayName}:${data.sound || data.message}:${data.room}`;
-        if (recentSfxKeys.has(sfxKey)) return;
-        recentSfxKeys.add(sfxKey);
-        if (recentSfxKeys.size > 500) {
-            const first = recentSfxKeys.values().next().value;
-            recentSfxKeys.delete(first);
-        }
-
-        // Extract audio filename from URL for slim storage
-        // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
-        const sfxUrl = data.url || '';
-        const audioFile = sfxUrl.split('/').pop() || null;
-
-        const msg = {
-            username: data.displayName || '???',
-            message: data.sound || data.message || '???',
-            room: data.room || '?',
-            audioFile,
-            clanTag: data.clanTag || null,
-        };
-
+    chat.messages.onSFX((msg) => {
         log('[SFX]', msg.username, msg.message, msg.room);
         logSfx(msg);
     });
@@ -251,7 +172,9 @@ site.whenReady(async () => {
 
     // Update the timestamp on any socket event
     socket.on('chat:message', () => { lastSocketEvent = Date.now(); });
+    socket.on('tts:insert',   () => { lastSocketEvent = Date.now(); });
     socket.on('tts:update',   () => { lastSocketEvent = Date.now(); });
+    socket.on('sfx:insert',   () => { lastSocketEvent = Date.now(); });
     socket.on('sfx:update',   () => { lastSocketEvent = Date.now(); });
     socket.on('chat:presence', () => { lastSocketEvent = Date.now(); });
     socket.on('presence',      () => { lastSocketEvent = Date.now(); });
