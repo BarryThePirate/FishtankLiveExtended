@@ -28,6 +28,7 @@ Version 2.0.0 is a complete rewrite for the current fishtank.live site, powered 
 - **Keyboard Shortcuts**: Q (Settings), P (Edit Profile), H (Help), X (Season Pass), C (Craft), M (Item Market), S (Stox). All togglable in settings. E always works
 - **Hidden Clickable Zones**: reveals secret clickable areas on the video player with a golden highlight on hover. Togglable in settings
 - **Season Pass Popup Suppression**: automatically closes the season pass popup and removes the banner. Togglable in settings
+- **Inventory Search**: adds a search box to the inventory popup and the crafting modal's item select grid, filtering items by name as you type. Also works in the trade modal. Togglable in settings
 
 ## Crafting
 - **Recipe Hints (Crafting Bench)**: when you open the crafting bench and select items, matching recipes are shown automatically. Select one item to see all recipes that use it, select two to see the result
