@@ -134,3 +134,56 @@ export function tryInjectCraftingItemSearch() {
     const items = grid.children;
     createSearchInput('Search items...', items, grid, title);
 }
+
+// ── Trade modal item search (inside #modal) ─────────────────────────
+
+export function initTradeSearch() {
+    if (!getSetting('enableInventorySearch')) return;
+
+    // Poll for #modal to exist (React renders it after the modalOpen event)
+    let attempts = 0;
+    const poll = setInterval(() => {
+        attempts++;
+        const modal = document.getElementById('modal');
+        if (modal) {
+            clearInterval(poll);
+            injectTradeSearch(modal);
+        } else if (attempts > 20) {
+            clearInterval(poll);
+        }
+    }, 50);
+
+    document.addEventListener('modalClose', () => clearInterval(poll), { once: true });
+}
+
+function injectTradeSearch(modal) {
+    // Watch for the item grid to appear inside the trade modal
+    const observer = new MutationObserver(() => {
+        const grid = modal.querySelector('.grid.grid-cols-5');
+        if (!grid) return;
+        if (modal.querySelector('[data-ftl-sdk="item-search"]')) {
+            observer.disconnect();
+            return;
+        }
+
+        const gridParent = grid.parentElement;
+        if (!gridParent) return;
+
+        createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+        observer.disconnect();
+    });
+
+    observer.observe(modal, { childList: true, subtree: true });
+
+    // Check immediately in case grid already exists
+    const grid = modal.querySelector('.grid.grid-cols-5');
+    if (grid && !modal.querySelector('[data-ftl-sdk="item-search"]')) {
+        const gridParent = grid.parentElement;
+        if (gridParent) {
+            createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+            observer.disconnect();
+        }
+    }
+
+    document.addEventListener('modalClose', () => observer.disconnect(), { once: true });
+}

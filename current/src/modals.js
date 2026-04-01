@@ -19,9 +19,14 @@ import {
 import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
 
 let currentUsername = null;
+let activeModalName = null;
 
 export function setCurrentUsername(name) {
     currentUsername = name;
+}
+
+export function setActiveModal(name) {
+    activeModalName = name;
 }
 
 // ── Firefox-safe event dispatch ──────────────────────────────────────
@@ -39,6 +44,12 @@ function dispatchPageEvent(eventName, detail = {}) {
 // ── Generic modal open helper ───────────────────────────────────────
 
 export function openModal(modalName, data = {}) {
+    // Toggle: if this modal is already open, close it
+    if (document.getElementById('modal') && activeModalName === modalName) {
+        dispatchPageEvent('modalClose');
+        return;
+    }
+
     if (document.getElementById('modal')) {
         dispatchPageEvent('modalClose');
         setTimeout(() => {
@@ -174,6 +185,11 @@ let pendingTab = null;
 let pendingLog = null;
 
 export function openSettingsModal() {
+    // Toggle: if our settings modal is already open, close it
+    if (document.getElementById('modal') && activeModalName === 'ftlExtended') {
+        dispatchPageEvent('modalClose');
+        return;
+    }
     pendingTab = null;
     pendingLog = null;
     openSettingsModalInternal();

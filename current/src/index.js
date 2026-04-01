@@ -22,10 +22,10 @@ import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
 import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast, setOnPingCountChange } from './logging.js';
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
-import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername } from './modals.js';
+import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername, setActiveModal } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
-import { tryInjectInventorySearch, tryInjectCraftingItemSearch } from './inventory.js';
+import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
 
 const DEBUG = false;
 const log = (...args) => DEBUG && console.log('[FTL Extended]', ...args);
@@ -60,6 +60,7 @@ document.addEventListener('modalOpen', (e) => {
     document.querySelector('[data-ftl-sdk="settings"]')?.remove();
 
     const modalName = detail?.modal;
+    setActiveModal(modalName || null);
 
     // Auto-close season pass popup
     if (modalName === 'seasonPass' && getSetting('autoCloseSeasonPassPopup')) {
@@ -75,6 +76,15 @@ document.addEventListener('modalOpen', (e) => {
     if (modalName === 'useItem') {
         initUseItemHints();
     }
+
+    // Inject item search when trade modal opens
+    if (modalName === 'tradeItem') {
+        initTradeSearch();
+    }
+});
+
+document.addEventListener('modalClose', () => {
+    setActiveModal(null);
 });
 
 // Inject flash animation CSS
@@ -173,13 +183,27 @@ site.whenReady(async () => {
 
     // ── TTS via Socket.IO ───────────────────────────────────────────
 
+    const recentTtsIds = new Set();
+
     socket.on('tts:update', (data) => {
+        // Deduplicate — tts:update fires for each status change (pending, approved, played)
+        const ttsId = data.id || null;
+        if (ttsId) {
+            if (recentTtsIds.has(ttsId)) return;
+            recentTtsIds.add(ttsId);
+            // Cap the set so it doesn't grow forever
+            if (recentTtsIds.size > 500) {
+                const first = recentTtsIds.values().next().value;
+                recentTtsIds.delete(first);
+            }
+        }
+
         const msg = {
             username: data.displayName || '???',
             message: data.message || '',
             voice: data.voice || '?',
             room: data.room || '?',
-            audioId: data.id || null,
+            audioId: ttsId,
             clanTag: data.clanTag || null,
         };
 
@@ -189,7 +213,19 @@ site.whenReady(async () => {
 
     // ── SFX via Socket.IO ───────────────────────────────────────────
 
+    const recentSfxKeys = new Set();
+
     socket.on('sfx:update', (data) => {
+        // Deduplicate — sfx:update may fire multiple times per sound
+        // No unique ID, so use composite key of id (if present) or username+sound+room
+        const sfxKey = data.id || `${data.displayName}:${data.sound || data.message}:${data.room}`;
+        if (recentSfxKeys.has(sfxKey)) return;
+        recentSfxKeys.add(sfxKey);
+        if (recentSfxKeys.size > 500) {
+            const first = recentSfxKeys.values().next().value;
+            recentSfxKeys.delete(first);
+        }
+
         // Extract audio filename from URL for slim storage
         // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
         const sfxUrl = data.url || '';
@@ -318,7 +354,7 @@ site.whenReady(async () => {
     // ── Startup toast ───────────────────────────────────────────────
 
     ui.toasts.notify('FTL Extended loaded!', {
-        description: 'v2.0.1',
+        description: 'v2.1.0',
         type: 'success',
         duration: 3000,
     });

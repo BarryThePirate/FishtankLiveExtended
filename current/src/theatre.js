@@ -220,13 +220,17 @@ function createToggleButton() {
  * disconnects immediately when the player vanishes or theatre exits.
  */
 function watchPlayerRemoval() {
+    // Observe body's direct children only (no subtree) to detect when
+    // React swaps out the video container during navigation.
+    if (!videoContainer) return;
+
     playerObserver = new MutationObserver(() => {
-        if (!document.getElementById('live-stream-player')) {
+        if (!videoContainer.isConnected) {
             exitTheatre();
         }
     });
 
-    playerObserver.observe(document.body, { childList: true, subtree: true });
+    playerObserver.observe(document.body, { childList: true });
 }
 
 /**
@@ -450,7 +454,8 @@ export function initTheatreButtonIntercept() {
         }
 
         // Check if it's the close/back button (X icon) while theatre is active
-        if (active) {
+        // Only match the X on the video player, not on modals or other popups
+        if (active && !btn.closest('#modal')) {
             const paths = btn.querySelectorAll('svg path');
             for (const p of paths) {
                 if (p.getAttribute('d')?.includes('M400 145.49')) {

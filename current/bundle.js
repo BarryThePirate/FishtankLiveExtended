@@ -7185,9 +7185,14 @@
 
 
   let currentUsername$1 = null;
+  let activeModalName = null;
 
   function setCurrentUsername(name) {
       currentUsername$1 = name;
+  }
+
+  function setActiveModal(name) {
+      activeModalName = name;
   }
 
   // ── Firefox-safe event dispatch ──────────────────────────────────────
@@ -7205,6 +7210,12 @@
   // ── Generic modal open helper ───────────────────────────────────────
 
   function openModal(modalName, data = {}) {
+      // Toggle: if this modal is already open, close it
+      if (document.getElementById('modal') && activeModalName === modalName) {
+          dispatchPageEvent('modalClose');
+          return;
+      }
+
       if (document.getElementById('modal')) {
           dispatchPageEvent('modalClose');
           setTimeout(() => {
@@ -7340,6 +7351,11 @@
   let pendingLog = null;
 
   function openSettingsModal() {
+      // Toggle: if our settings modal is already open, close it
+      if (document.getElementById('modal') && activeModalName === 'ftlExtended') {
+          dispatchPageEvent('modalClose');
+          return;
+      }
       pendingTab = null;
       pendingLog = null;
       openSettingsModalInternal();
@@ -8061,13 +8077,17 @@
    * disconnects immediately when the player vanishes or theatre exits.
    */
   function watchPlayerRemoval() {
+      // Observe body's direct children only (no subtree) to detect when
+      // React swaps out the video container during navigation.
+      if (!videoContainer) return;
+
       playerObserver = new MutationObserver(() => {
-          if (!document.getElementById('live-stream-player')) {
+          if (!videoContainer.isConnected) {
               exitTheatre();
           }
       });
 
-      playerObserver.observe(document.body, { childList: true, subtree: true });
+      playerObserver.observe(document.body, { childList: true });
   }
 
   /**
@@ -8291,7 +8311,8 @@
           }
 
           // Check if it's the close/back button (X icon) while theatre is active
-          if (active) {
+          // Only match the X on the video player, not on modals or other popups
+          if (active && !btn.closest('#modal')) {
               const paths = btn.querySelectorAll('svg path');
               for (const p of paths) {
                   if (p.getAttribute('d')?.includes('M400 145.49')) {
@@ -8460,6 +8481,59 @@
       createSearchInput('Search items...', items, grid, title);
   }
 
+  // ── Trade modal item search (inside #modal) ─────────────────────────
+
+  function initTradeSearch() {
+      if (!getSetting('enableInventorySearch')) return;
+
+      // Poll for #modal to exist (React renders it after the modalOpen event)
+      let attempts = 0;
+      const poll = setInterval(() => {
+          attempts++;
+          const modal = document.getElementById('modal');
+          if (modal) {
+              clearInterval(poll);
+              injectTradeSearch(modal);
+          } else if (attempts > 20) {
+              clearInterval(poll);
+          }
+      }, 50);
+
+      document.addEventListener('modalClose', () => clearInterval(poll), { once: true });
+  }
+
+  function injectTradeSearch(modal) {
+      // Watch for the item grid to appear inside the trade modal
+      const observer = new MutationObserver(() => {
+          const grid = modal.querySelector('.grid.grid-cols-5');
+          if (!grid) return;
+          if (modal.querySelector('[data-ftl-sdk="item-search"]')) {
+              observer.disconnect();
+              return;
+          }
+
+          const gridParent = grid.parentElement;
+          if (!gridParent) return;
+
+          createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+          observer.disconnect();
+      });
+
+      observer.observe(modal, { childList: true, subtree: true });
+
+      // Check immediately in case grid already exists
+      const grid = modal.querySelector('.grid.grid-cols-5');
+      if (grid && !modal.querySelector('[data-ftl-sdk="item-search"]')) {
+          const gridParent = grid.parentElement;
+          if (gridParent) {
+              createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+              observer.disconnect();
+          }
+      }
+
+      document.addEventListener('modalClose', () => observer.disconnect(), { once: true });
+  }
+
   /**
    * index.js — FTL Extended entry point (current site)
    *
@@ -8511,6 +8585,7 @@
       document.querySelector('[data-ftl-sdk="settings"]')?.remove();
 
       const modalName = detail?.modal;
+      setActiveModal(modalName || null);
 
       // Auto-close season pass popup
       if (modalName === 'seasonPass' && getSetting('autoCloseSeasonPassPopup')) {
@@ -8526,6 +8601,15 @@
       if (modalName === 'useItem') {
           initUseItemHints();
       }
+
+      // Inject item search when trade modal opens
+      if (modalName === 'tradeItem') {
+          initTradeSearch();
+      }
+  });
+
+  document.addEventListener('modalClose', () => {
+      setActiveModal(null);
   });
 
   // Inject flash animation CSS
@@ -8621,13 +8705,27 @@
 
       // ── TTS via Socket.IO ───────────────────────────────────────────
 
+      const recentTtsIds = new Set();
+
       on$1('tts:update', (data) => {
+          // Deduplicate — tts:update fires for each status change (pending, approved, played)
+          const ttsId = data.id || null;
+          if (ttsId) {
+              if (recentTtsIds.has(ttsId)) return;
+              recentTtsIds.add(ttsId);
+              // Cap the set so it doesn't grow forever
+              if (recentTtsIds.size > 500) {
+                  const first = recentTtsIds.values().next().value;
+                  recentTtsIds.delete(first);
+              }
+          }
+
           const msg = {
               username: data.displayName || '???',
               message: data.message || '',
               voice: data.voice || '?',
               room: data.room || '?',
-              audioId: data.id || null,
+              audioId: ttsId,
               clanTag: data.clanTag || null,
           };
           logTts(msg);
@@ -8635,7 +8733,19 @@
 
       // ── SFX via Socket.IO ───────────────────────────────────────────
 
+      const recentSfxKeys = new Set();
+
       on$1('sfx:update', (data) => {
+          // Deduplicate — sfx:update may fire multiple times per sound
+          // No unique ID, so use composite key of id (if present) or username+sound+room
+          const sfxKey = data.id || `${data.displayName}:${data.sound || data.message}:${data.room}`;
+          if (recentSfxKeys.has(sfxKey)) return;
+          recentSfxKeys.add(sfxKey);
+          if (recentSfxKeys.size > 500) {
+              const first = recentSfxKeys.values().next().value;
+              recentSfxKeys.delete(first);
+          }
+
           // Extract audio filename from URL for slim storage
           // "https://cdn.fishtank.live/sfx/Call%20To%20Prayer-1773959715236.mp3" → "Call%20To%20Prayer-1773959715236.mp3"
           const sfxUrl = data.url || '';
@@ -8761,7 +8871,7 @@
       // ── Startup toast ───────────────────────────────────────────────
 
       notify('FTL Extended loaded!', {
-          description: 'v2.0.1',
+          description: 'v2.1.0',
           type: 'success',
           duration: 3000,
       });
