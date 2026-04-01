@@ -10,6 +10,7 @@ const DEFAULTS = {
     revealHiddenZones: true,
     enhancedTheatreMode: true,
     enableInventorySearch: true,
+    enablePingIndicator: true,
     adminLogSize: 200,
     staffLogSize: 200,
     modLogSize: 200,

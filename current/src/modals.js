@@ -119,6 +119,8 @@ export function tryInjectDropdownButton() {
 // megaphone button). Clicking it opens FTL Extended on the pings log.
 
 export function tryInjectPingButton() {
+    if (!getSetting('enablePingIndicator')) return;
+
     // Find the chat header — it contains "Chat" text and the "Global" pill
     const chatLabels = document.querySelectorAll('span.font-bold.text-dark-text');
     let chatHeader = null;
@@ -258,6 +260,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
+            ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
         </div>
 
         <!-- Crafting tab -->
