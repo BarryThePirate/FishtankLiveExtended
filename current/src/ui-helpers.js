@@ -198,6 +198,22 @@ function endorsementBadge(endorsement) {
 }
 
 /**
+ * Build a chat room badge (e.g. "SP", "XL").
+ * Only shown for non-Global rooms to indicate where the message came from.
+ */
+function chatRoomBadge(chatRoom) {
+    if (!chatRoom || chatRoom === 'Global') return null;
+    const badge = document.createElement('span');
+    badge.className = 'font-secondary text-[10px] mr-1 px-1 rounded select-none inline-flex items-center bg-primary-500/20 text-primary-400/90';
+    // Short labels to save space
+    badge.textContent = chatRoom === 'Season Pass' ? 'SP'
+        : chatRoom === 'Season Pass XL' ? 'XL'
+            : chatRoom;
+    badge.title = chatRoom;
+    return badge;
+}
+
+/**
  * Build a timestamp div matching the site's chat style.
  * Positioned at bottom right of the row.
  */
@@ -465,6 +481,9 @@ export function buildPingsRow(entry) {
 
     const content = inlineContent();
 
+    const roomBadge = chatRoomBadge(entry.chatRoom);
+    if (roomBadge) content.appendChild(roomBadge);
+
     if (entry.endorsement) {
         const ebadge = endorsementBadge(entry.endorsement);
         if (ebadge) content.appendChild(ebadge);
@@ -498,6 +517,9 @@ export function buildRoleRow(entry) {
     if (img) topLine.appendChild(img);
 
     const content = inlineContent();
+
+    const roomBadge = chatRoomBadge(entry.chatRoom);
+    if (roomBadge) content.appendChild(roomBadge);
 
     if (entry.endorsement) {
         const ebadge = endorsementBadge(entry.endorsement);

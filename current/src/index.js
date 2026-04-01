@@ -22,7 +22,7 @@ import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
 import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast, setOnPingCountChange } from './logging.js';
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
-import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername, setActiveModal } from './modals.js';
+import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
@@ -129,6 +129,41 @@ site.whenReady(async () => {
         console.warn('[FTL Extended] Socket connection failed:', err.message);
         console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
     }
+
+    // ── Season Pass room auto-detection ─────────────────────────────
+    // Wait for the user's auth cookie to appear, extract their UUID,
+    // fetch their profile to check Season Pass status, then subscribe
+    // to additional rooms if they have access and haven't turned it off.
+
+    site.onUserIdDetected((userId) => {
+        log('User ID detected:', userId);
+        fetch(`https://api.fishtank.live/v1/profile/${userId}`)
+            .then(r => r.json())
+            .then(data => {
+                const profile = data?.profile;
+                if (!profile) return;
+
+                // Update pass status for settings UI
+                setUserPasses({
+                    seasonPass: !!profile.seasonPass,
+                    seasonPassXL: !!profile.seasonPassXL,
+                });
+
+                if (profile.seasonPass && getSetting('monitorSeasonPass')) {
+                    chat.rooms.subscribe('Season Pass').then(ok => {
+                        if (ok) log('Subscribed to Season Pass');
+                    });
+                }
+                if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
+                    chat.rooms.subscribe('Season Pass XL').then(ok => {
+                        if (ok) log('Subscribed to Season Pass XL');
+                    });
+                }
+            })
+            .catch(err => {
+                log('Profile fetch failed:', err.message);
+            });
+    });
 
     // ── Chat messages via SDK (normalised + structured) ────────────────
 
@@ -277,7 +312,7 @@ site.whenReady(async () => {
     // ── Startup toast ───────────────────────────────────────────────
 
     ui.toasts.notify('FTL Extended loaded!', {
-        description: 'v2.1.0',
+        description: 'v2.1.1',
         type: 'success',
         duration: 3000,
     });

@@ -11,6 +11,8 @@ const DEFAULTS = {
     enhancedTheatreMode: true,
     enableInventorySearch: true,
     enablePingIndicator: true,
+    monitorSeasonPass: true,
+    monitorSeasonPassXL: true,
     adminLogSize: 200,
     staffLogSize: 200,
     modLogSize: 200,

@@ -175,6 +175,7 @@ export function logPing(msg) {
         avatar: msg.avatar || null,
         endorsement: msg.endorsement || null,
         role: msg.role || null,
+        chatRoom: msg.chatRoom || 'Global',
         timestamp: Date.now(),
     };
     pushEntry(pingsLog, entry, 'pings');
@@ -197,6 +198,7 @@ export function logRoleMessage(msg) {
         clan: msg.clan || null,
         endorsement: msg.endorsement || null,
         role,
+        chatRoom: msg.chatRoom || 'Global',
         timestamp: Date.now(),
     };
     pushEntry(arr, entry, type);

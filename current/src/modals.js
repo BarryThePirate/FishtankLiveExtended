@@ -20,9 +20,14 @@ import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
 
 let currentUsername = null;
 let activeModalName = null;
+let userPasses = { seasonPass: false, seasonPassXL: false };
 
 export function setCurrentUsername(name) {
     currentUsername = name;
+}
+
+export function setUserPasses(passes) {
+    userPasses = passes;
 }
 
 export function setActiveModal(name) {
@@ -261,6 +266,8 @@ function buildSettingsContent(modal) {
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
+            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
+            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
         </div>
 
         <!-- Crafting tab -->

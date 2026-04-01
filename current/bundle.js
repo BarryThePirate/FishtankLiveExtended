@@ -28,19 +28,57 @@
    * Connection handshake sequence (discovered via frame inspection):
    * 1. Connect WebSocket with msgpack parser
    * 2. Socket.IO handshake (automatic)
-   * 3. Server expects a token emission: { token: <JWT|null> }
-   *    - null/empty = global chat only (unauthenticated)
-   *    - JWT = full access including season pass rooms + account events
+   * 3. Auth token sent as part of handshake: { token: <JWT|null> }
+   *    - null = anonymous read-only access (sufficient for all rooms)
+   *    - JWT = authenticated (required only for sending messages)
    * 4. Server responds with session IDs
-   * 5. Client subscribes to chat:presence and presence
-   * 6. Server sends chat:room ("Global"), presence counts
-   * 7. Chat messages start flowing
+   * 5. Server sends chat:room ("Global") — default room
+   * 6. Chat messages start flowing
+   *
+   * Room switching: emit('chat:room', 'Season Pass') to change which
+   * room's messages are delivered. No authentication required for reading
+   * any room — auth only gates message sending.
    */
 
   const SOCKET_URL = 'wss://ws.fishtank.live';
 
   // Auth token cookie name used by the site (Supabase auth)
-  const AUTH_COOKIE_NAME = 'sb-wcsaaupukpdmqdjcgaoo-auth-token';
+  const AUTH_COOKIE_NAME$1 = 'sb-wcsaaupukpdmqdjcgaoo-auth-token';
+
+  // ── Bundled dependencies (for UMD/userscript usage) ─────────────────
+  // When the SDK is built as a UMD bundle, socket.io-client and
+  // socket.io-msgpack-parser are included. These let userscripts call
+  // socket.connect(options) without passing dependencies manually.
+  // In ES module context (extension usage), extensions pass them explicitly.
+  //
+  // Loaded lazily on first userscript-style connect() call to avoid
+  // pulling in duplicates when extensions import the SDK as source.
+  let _bundledIo = null;
+  let _bundledMsgpackParser = null;
+  let _bundledDepsLoaded = false;
+
+  async function loadBundledDeps() {
+    if (_bundledDepsLoaded) return;
+    _bundledDepsLoaded = true;
+    try {
+      const ioModule = await import('socket.io-client');
+      _bundledIo = ioModule.io || ioModule.default;
+    } catch {}
+    try {
+      _bundledMsgpackParser = await import('socket.io-msgpack-parser');
+    } catch {}
+  }
+
+  /**
+   * Known chat room names.
+   * The server defaults to Global. Other rooms require an explicit
+   * chat:room emission after connecting.
+   */
+  const ROOMS = {
+    GLOBAL: 'Global',
+    SEASON_PASS: 'Season Pass',
+    SEASON_PASS_XL: 'Season Pass XL',
+  };
 
   // Connection state
   let socket = null;
@@ -75,19 +113,52 @@
    * This creates an independent connection using Socket.IO v4 with
    * MessagePack encoding.
    *
-   * @param {Function} ioClient - The socket.io-client `io` function
-   * @param {Object} msgpackParser - The socket.io-msgpack-parser module
-   * @param {Object} options
-   * @param {string|null} options.token - JWT auth token. If null, connects
-   *   as unauthenticated (global chat only). If omitted (undefined),
-   *   attempts to read the token from the site's auth cookie.
-   * @param {boolean} options.autoSubscribe - Auto-subscribe to chat:presence
-   *   and presence events after connecting (default true, matches site behaviour)
+   * Supports two calling conventions:
+   *
+   *   // Extension usage — caller provides socket.io-client and msgpack parser
+   *   await socket.connect(io, msgpackParser, { token: null });
+   *
+   *   // Userscript usage — uses bundled dependencies (UMD build only)
+   *   await socket.connect({ token: null });
+   *
+   * @param {Function|Object} ioClientOrOptions - Either the socket.io-client `io`
+   *   function (extension usage) or an options object (userscript usage)
+   * @param {Object} [msgpackParserOrOptions] - The socket.io-msgpack-parser
+   *   module (extension usage) or undefined (userscript usage)
+   * @param {Object} [maybeOptions] - Connection options (extension usage only)
+   * @param {string|null|undefined} options.token - JWT auth token. null = anonymous,
+   *   undefined = auto-detect from cookie.
    * @returns {Promise} Resolves when connected and handshake is complete
    */
-  async function connect(ioClient, msgpackParser, options = {}) {
+  async function connect(ioClientOrOptions, msgpackParserOrOptions, maybeOptions) {
     if (socket && connected) return socket;
     if (connectionPromise) return connectionPromise;
+
+    // Detect calling convention:
+    // connect(io, msgpackParser, opts) — first arg is a function (extension usage)
+    // connect(opts) — first arg is an object or omitted (userscript usage)
+    let ioClient, msgpackParser, options;
+
+    if (typeof ioClientOrOptions === 'function') {
+      // Extension usage
+      ioClient = ioClientOrOptions;
+      msgpackParser = msgpackParserOrOptions;
+      options = maybeOptions || {};
+    } else {
+      // Userscript usage — try to load bundled dependencies
+      options = ioClientOrOptions || {};
+      await loadBundledDeps();
+
+      if (!_bundledIo || !_bundledMsgpackParser) {
+        throw new Error(
+            '[ftl-ext-sdk] socket.connect() called without io/msgpackParser arguments and ' +
+            'bundled dependencies are not available. Either pass them explicitly: ' +
+            'socket.connect(io, msgpackParser, options) — or use the UMD bundle.'
+        );
+      }
+      ioClient = _bundledIo;
+      msgpackParser = _bundledMsgpackParser;
+    }
 
     const {
       token = undefined,  // undefined = auto-detect, null = force unauthenticated
@@ -102,6 +173,10 @@
 
     connectionPromise = new Promise((resolve, reject) => {
       try {
+        // Store references for createConnection()
+        _ioClient = ioClient;
+        _msgpackParser = msgpackParser;
+
         socket = ioClient(SOCKET_URL, {
           parser: msgpackParser,
           transports: ['websocket'],
@@ -119,6 +194,11 @@
         socket.on('connect', () => {
           connected = true;
           authenticated = !!authToken;
+
+          // Explicitly subscribe to Global chat — don't rely on the
+          // server's default, which may be influenced by session state
+          socket.emit('chat:room', ROOMS.GLOBAL);
+
           console.log(
               '[ftl-ext-sdk] Socket connected',
               authenticated ? '(authenticated)' : '(anonymous)'
@@ -219,7 +299,7 @@
       const cookies = document.cookie.split(';');
       for (const cookie of cookies) {
         const [name, ...valueParts] = cookie.trim().split('=');
-        if (name === AUTH_COOKIE_NAME) {
+        if (name === AUTH_COOKIE_NAME$1) {
           const value = decodeURIComponent(valueParts.join('='));
           try {
             const parsed = JSON.parse(value);
@@ -235,6 +315,52 @@
       console.warn('[ftl-ext-sdk] Failed to read auth cookie:', e.message);
     }
     return null;
+  }
+
+  // ── Internal: connection factory for multi-room support ─────────────
+  // Stored references to the io client and parser passed to connect(),
+  // so that rooms.js can create additional connections with the same config.
+
+  let _ioClient = null;
+  let _msgpackParser = null;
+
+  /**
+   * Create a new independent socket connection to the server.
+   * Uses the same io client and parser that were passed to connect().
+   *
+   * This is an internal API for the rooms module — not intended for
+   * direct consumer use.
+   *
+   * @param {Object} options
+   * @param {string|null|undefined} options.token - Auth token.
+   *   undefined = auto-detect from cookie, null = force anonymous.
+   * @returns {Object|null} Raw Socket.IO socket instance, or null if
+   *   connect() hasn't been called yet
+   */
+  function createConnection(options = {}) {
+    if (!_ioClient || !_msgpackParser) {
+      console.warn('[ftl-ext-sdk] Cannot create connection — connect() has not been called yet');
+      return null;
+    }
+
+    const { token = undefined } = options;
+
+    // Resolve auth token: undefined = auto-detect, null = anonymous
+    let authToken = token;
+    if (authToken === undefined) {
+      authToken = getAuthTokenFromCookie();
+    }
+
+    return _ioClient(SOCKET_URL, {
+      parser: _msgpackParser,
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 30000,
+      autoConnect: true,
+      auth: { token: authToken || null },
+    });
   }
 
   /**
@@ -324,12 +450,12 @@
    *
    * Detects which version of the site we're on and provides
    * readiness checking for SDK initialisation.
-   * 
+   *
    * IMPORTANT: This module NEVER creates persistent body-level observers.
    * The site generates thousands of chat mutations per second — a body
    * observer with subtree:true would process every single one and
    * effectively crash the page.
-   * 
+   *
    * All waiting/detection uses setInterval polling instead.
    */
 
@@ -366,8 +492,8 @@
   function isSiteReady() {
     if (isCurrent()) {
       return (
-        document.getElementById('chat-input') !== null ||
-        document.querySelector('[data-react-window-index]') !== null
+          document.getElementById('chat-input') !== null ||
+          document.querySelector('[data-react-window-index]') !== null
       );
     }
 
@@ -380,7 +506,7 @@
 
   /**
    * Wait for the site to be ready, then call the callback.
-   * 
+   *
    * Uses setInterval polling — NOT a MutationObserver on document.body.
    * Polling at 250ms is negligible overhead compared to a body observer
    * that would fire on every DOM mutation (thousands per second on this site).
@@ -437,7 +563,7 @@
 
   /**
    * Wait for the username to appear in the DOM, then call the callback.
-   * 
+   *
    * Uses setInterval polling — NOT a persistent body observer.
    * Checks every 500ms, gives up after timeout.
    * Once found, the username is cached and the polling stops.
@@ -452,7 +578,7 @@
       setTimeout(() => callback(_currentUser), 0);
       return () => {};
     }
-    
+
     // Check DOM immediately
     const immediate = _readUsernameFromDom();
     if (immediate) {
@@ -460,10 +586,10 @@
       setTimeout(() => callback(_currentUser), 0);
       return () => {};
     }
-    
+
     // Poll until found
     const start = Date.now();
-    
+
     const check = setInterval(() => {
       const name = _readUsernameFromDom();
       if (name) {
@@ -475,7 +601,108 @@
         // User might not be logged in — that's fine, not an error
       }
     }, 500);
-    
+
+    return () => clearInterval(check);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Current user ID detection (via Supabase auth cookie)
+  // ---------------------------------------------------------------------------
+  // The site stores a Supabase JWT in a non-HttpOnly cookie that content
+  // scripts can read via document.cookie. The JWT payload contains the
+  // user's UUID in the `sub` field. We decode the payload (base64, no
+  // verification needed) to extract it.
+  //
+  // The cookie may not exist immediately on page load — it's set after
+  // the auth flow completes. We poll until it appears.
+
+  const AUTH_COOKIE_NAME = 'sb-wcsaaupukpdmqdjcgaoo-auth-token';
+
+  let _currentUserId = null;
+
+  /**
+   * Read the user ID from the Supabase auth cookie.
+   * Decodes the JWT payload to extract the `sub` field.
+   * Returns the user UUID string or null if not available.
+   */
+  function _readUserIdFromCookie() {
+    try {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const [name, ...valueParts] = cookie.trim().split('=');
+        if (name === AUTH_COOKIE_NAME) {
+          const value = decodeURIComponent(valueParts.join('='));
+
+          // Cookie value is a JSON array: ["access_token", "refresh_token"]
+          // or a JSON object: {access_token, refresh_token}
+          let token;
+          try {
+            const parsed = JSON.parse(value);
+            token = Array.isArray(parsed) ? parsed[0] : (parsed.access_token || parsed.token);
+          } catch {
+            token = value;
+          }
+
+          if (!token) return null;
+
+          // Decode JWT payload (middle segment, base64url)
+          const parts = token.split('.');
+          if (parts.length !== 3) return null;
+
+          // base64url → base64 → decode
+          const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const decoded = JSON.parse(atob(payload));
+          return decoded.sub || decoded.uid || null;
+        }
+      }
+    } catch {
+      // Cookie not present or malformed — user not logged in
+    }
+    return null;
+  }
+
+  /**
+   * Wait for the user's auth cookie to appear, then call the callback
+   * with the user ID.
+   *
+   * Uses setInterval polling — NOT a persistent body observer.
+   * Checks every 500ms, gives up after timeout.
+   * Once found, the user ID is cached and the polling stops.
+   *
+   * @param {Function} callback - Called with the user ID string
+   * @param {number} timeout - Max wait in ms (default 30000)
+   * @returns {Function} Cancel function
+   */
+  function onUserIdDetected(callback, timeout = 30000) {
+    // Already cached
+    if (_currentUserId) {
+      setTimeout(() => callback(_currentUserId), 0);
+      return () => {};
+    }
+
+    // Check cookie immediately
+    const immediate = _readUserIdFromCookie();
+    if (immediate) {
+      _currentUserId = immediate;
+      setTimeout(() => callback(_currentUserId), 0);
+      return () => {};
+    }
+
+    // Poll until found
+    const start = Date.now();
+
+    const check = setInterval(() => {
+      const userId = _readUserIdFromCookie();
+      if (userId) {
+        _currentUserId = userId;
+        clearInterval(check);
+        callback(_currentUserId);
+      } else if (Date.now() - start > timeout) {
+        clearInterval(check);
+        // User might not be logged in — that's fine, not an error
+      }
+    }, 500);
+
     return () => clearInterval(check);
   }
 
@@ -634,7 +861,7 @@
    * - Avatar filename extraction from CDN URL
    * - Mention normalisation to [{displayName, userId}]
    */
-  function normaliseChat(data) {
+  function normaliseChat(data, chatRoom = 'Global') {
     const raw = Array.isArray(data) ? data[0] : data;
     if (!raw) return null;
 
@@ -670,6 +897,7 @@
       clan:        raw.user?.clan || null,
       endorsement: raw.user?.endorsement || null,
       mentions,
+      chatRoom,
       raw,
     };
   }
@@ -738,6 +966,7 @@
    *   clan: string|null,         // Clan tag
    *   endorsement: string|null,  // Endorsement badge text
    *   mentions: Array<{displayName: string, userId: string|null}>,
+   *   chatRoom: string,          // 'Global' | 'Season Pass' | 'Season Pass XL'
    *   raw: Object,               // Original socket data
    * }
    *
@@ -793,6 +1022,205 @@
     ensureListening();
     sfxCallbacks.add(callback);
     return () => sfxCallbacks.delete(callback);
+  }
+
+  // ── Internal: dispatch functions for multi-room support ─────────────
+  // These allow rooms.js to feed events from additional sockets through
+  // the same normalisation pipeline and callback registry. Not intended
+  // for direct consumer use.
+
+  /**
+   * Normalise and dispatch a raw chat:message event from a room socket.
+   * @param {*} data - Raw socket event data
+   * @param {string} chatRoom - Room name (e.g. 'Season Pass')
+   */
+  function _dispatchChat(data, chatRoom) {
+    const normalised = normaliseChat(data, chatRoom);
+    if (!normalised) return;
+    for (const cb of messageCallbacks) {
+      try { cb(normalised); }
+      catch (e) { console.error('[ftl-ext-sdk] Chat message callback error:', e); }
+    }
+  }
+
+  /**
+   * Normalise and dispatch a raw tts event from a room socket.
+   * @param {*} data - Raw socket event data
+   */
+  function _dispatchTts(data) {
+    const normalised = normaliseTts(data);
+    if (!normalised) return;
+    for (const cb of ttsCallbacks) {
+      try { cb(normalised); }
+      catch (e) { console.error('[ftl-ext-sdk] TTS callback error:', e); }
+    }
+  }
+
+  /**
+   * Normalise and dispatch a raw sfx event from a room socket.
+   * @param {*} data - Raw socket event data
+   */
+  function _dispatchSfx(data) {
+    const normalised = normaliseSfx(data);
+    if (!normalised) return;
+    for (const cb of sfxCallbacks) {
+      try { cb(normalised); }
+      catch (e) { console.error('[ftl-ext-sdk] SFX callback error:', e); }
+    }
+  }
+
+  /**
+   * chat/rooms.js — Multi-Room Chat Subscription
+   *
+   * Manages additional socket connections for monitoring chat rooms
+   * beyond the default Global room. Each subscribed room gets its own
+   * independent Socket.IO connection that emits `chat:room` to switch
+   * the server's message feed.
+   *
+   * Messages from all room sockets are funnelled through the same
+   * normalisation pipeline in chat/messages.js, so consumers using
+   * onMessage/onTTS/onSFX receive events from all subscribed rooms
+   * transparently. Each normalised chat message includes a `chatRoom`
+   * field indicating which room it came from.
+   *
+   * The primary socket (from socket.connect()) always handles Global.
+   * This module only manages the additional room connections.
+   *
+   * Usage:
+   *   import { chat } from 'ftl-ext-sdk';
+   *
+   *   // After socket.connect()...
+   *   chat.rooms.subscribe('Season Pass');
+   *   chat.rooms.subscribe('Season Pass XL');
+   *
+   *   // Messages from all rooms now flow through chat.messages.onMessage()
+   *   // Each message has msg.chatRoom: 'Global' | 'Season Pass' | 'Season Pass XL'
+   *
+   *   chat.rooms.unsubscribe('Season Pass XL');
+   *   chat.rooms.getSubscribed();  // ['Season Pass']
+   *   chat.rooms.unsubscribeAll();
+   */
+
+
+  // ── State ───────────────────────────────────────────────────────────
+
+  // Active room connections: roomName → { socket, connected }
+  const roomSockets = new Map();
+
+  // ── Public API ──────────────────────────────────────────────────────
+
+  /**
+   * Subscribe to a chat room. Opens a new socket connection and emits
+   * `chat:room` to start receiving that room's messages.
+   *
+   * Messages will flow through the existing chat.messages.onMessage(),
+   * onTTS(), and onSFX() callbacks with the `chatRoom` field set.
+   *
+   * No-op if already subscribed to this room. No-op for 'Global'
+   * (always handled by the primary socket).
+   *
+   * @param {string} roomName - Room to subscribe to (use ROOMS constants)
+   * @returns {Promise<boolean>} True if subscription succeeded
+   */
+  async function subscribe(roomName) {
+    // Global is always on the primary socket
+    if (roomName === ROOMS.GLOBAL) {
+      console.warn('[ftl-ext-sdk] Global room is always active on the primary socket');
+      return true;
+    }
+
+    // Already subscribed
+    if (roomSockets.has(roomName)) return true;
+
+    const socket = createConnection({ token: null });
+    if (!socket) {
+      console.warn(`[ftl-ext-sdk] Cannot subscribe to "${roomName}" — primary socket not connected yet`);
+      return false;
+    }
+
+    const entry = { socket, connected: false };
+    roomSockets.set(roomName, entry);
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.warn(`[ftl-ext-sdk] Room "${roomName}" connection timed out`);
+        cleanup(roomName);
+        resolve(false);
+      }, 10000);
+
+      socket.on('connect', () => {
+        entry.connected = true;
+        clearTimeout(timeout);
+
+        // Subscribe to the room
+        socket.emit('chat:room', roomName);
+
+        // Wire up event listeners that dispatch through messages.js
+        wireRoomListeners(socket, roomName);
+
+        console.log(`[ftl-ext-sdk] Subscribed to room: ${roomName}`);
+        resolve(true);
+      });
+
+      socket.on('disconnect', (reason) => {
+        entry.connected = false;
+        console.log(`[ftl-ext-sdk] Room "${roomName}" disconnected: ${reason}`);
+      });
+
+      // Handle reconnection — re-emit chat:room after reconnect
+      socket.io.on('reconnect', () => {
+        entry.connected = true;
+        socket.emit('chat:room', roomName);
+        console.log(`[ftl-ext-sdk] Room "${roomName}" reconnected, re-subscribed`);
+      });
+
+      socket.on('connect_error', (err) => {
+        if (!entry.connected) {
+          clearTimeout(timeout);
+          console.warn(`[ftl-ext-sdk] Room "${roomName}" connection error: ${err.message}`);
+          cleanup(roomName);
+          resolve(false);
+        }
+      });
+    });
+  }
+
+  // ── Internal ────────────────────────────────────────────────────────
+
+  /**
+   * Wire up event listeners on a room socket that dispatch through
+   * the messages.js normalisation pipeline.
+   */
+  function wireRoomListeners(socket, roomName) {
+    // Chat messages — dispatch with the room name
+    socket.on(EVENTS.CHAT_MESSAGE, (data) => {
+      _dispatchChat(data, roomName);
+    });
+
+    // TTS — listen on both insert and update, dedup handles overlap
+    const ttsHandler = (data) => _dispatchTts(data);
+    socket.on(EVENTS.TTS_INSERT, ttsHandler);
+    socket.on(EVENTS.TTS_UPDATE, ttsHandler);
+
+    // SFX — same pattern
+    const sfxHandler = (data) => _dispatchSfx(data);
+    socket.on(EVENTS.SFX_INSERT, sfxHandler);
+    socket.on(EVENTS.SFX_UPDATE, sfxHandler);
+  }
+
+  /**
+   * Clean up a room subscription — disconnect and remove from state.
+   */
+  function cleanup(roomName) {
+    const entry = roomSockets.get(roomName);
+    if (!entry) return;
+
+    try {
+      entry.socket.disconnect();
+    } catch {}
+
+    roomSockets.delete(roomName);
+    console.log(`[ftl-ext-sdk] Unsubscribed from room: ${roomName}`);
   }
 
   /**
@@ -6286,6 +6714,8 @@
       enhancedTheatreMode: true,
       enableInventorySearch: true,
       enablePingIndicator: true,
+      monitorSeasonPass: true,
+      monitorSeasonPassXL: true,
       adminLogSize: 200,
       staffLogSize: 200,
       modLogSize: 200,
@@ -6509,6 +6939,22 @@
       const badge = document.createElement('span');
       badge.className = 'font-secondary text-xs mr-1 px-1 rounded select-none inline-flex items-center bg-dark-400/75 text-light-text/60';
       badge.textContent = endorsement;
+      return badge;
+  }
+
+  /**
+   * Build a chat room badge (e.g. "SP", "XL").
+   * Only shown for non-Global rooms to indicate where the message came from.
+   */
+  function chatRoomBadge(chatRoom) {
+      if (!chatRoom || chatRoom === 'Global') return null;
+      const badge = document.createElement('span');
+      badge.className = 'font-secondary text-[10px] mr-1 px-1 rounded select-none inline-flex items-center bg-primary-500/20 text-primary-400/90';
+      // Short labels to save space
+      badge.textContent = chatRoom === 'Season Pass' ? 'SP'
+          : chatRoom === 'Season Pass XL' ? 'XL'
+              : chatRoom;
+      badge.title = chatRoom;
       return badge;
   }
 
@@ -6777,6 +7223,9 @@
 
       const content = inlineContent();
 
+      const roomBadge = chatRoomBadge(entry.chatRoom);
+      if (roomBadge) content.appendChild(roomBadge);
+
       if (entry.endorsement) {
           const ebadge = endorsementBadge(entry.endorsement);
           if (ebadge) content.appendChild(ebadge);
@@ -6810,6 +7259,9 @@
       if (img) topLine.appendChild(img);
 
       const content = inlineContent();
+
+      const roomBadge = chatRoomBadge(entry.chatRoom);
+      if (roomBadge) content.appendChild(roomBadge);
 
       if (entry.endorsement) {
           const ebadge = endorsementBadge(entry.endorsement);
@@ -7079,6 +7531,7 @@
           avatar: msg.avatar || null,
           endorsement: msg.endorsement || null,
           role: msg.role || null,
+          chatRoom: msg.chatRoom || 'Global',
           timestamp: Date.now(),
       };
       pushEntry(pingsLog, entry, 'pings');
@@ -7101,6 +7554,7 @@
           clan: msg.clan || null,
           endorsement: msg.endorsement || null,
           role,
+          chatRoom: msg.chatRoom || 'Global',
           timestamp: Date.now(),
       };
       pushEntry(arr, entry, type);
@@ -7466,9 +7920,14 @@
 
   let currentUsername$1 = null;
   let activeModalName = null;
+  let userPasses = { seasonPass: false, seasonPassXL: false };
 
   function setCurrentUsername(name) {
       currentUsername$1 = name;
+  }
+
+  function setUserPasses(passes) {
+      userPasses = passes;
   }
 
   function setActiveModal(name) {
@@ -7707,6 +8166,8 @@
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
+            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
+            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
         </div>
 
         <!-- Crafting tab -->
@@ -8937,6 +9398,38 @@
           console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
       }
 
+      // ── Season Pass room auto-detection ─────────────────────────────
+      // Wait for the user's auth cookie to appear, extract their UUID,
+      // fetch their profile to check Season Pass status, then subscribe
+      // to additional rooms if they have access and haven't turned it off.
+
+      onUserIdDetected((userId) => {
+          fetch(`https://api.fishtank.live/v1/profile/${userId}`)
+              .then(r => r.json())
+              .then(data => {
+                  const profile = data?.profile;
+                  if (!profile) return;
+
+                  // Update pass status for settings UI
+                  setUserPasses({
+                      seasonPass: !!profile.seasonPass,
+                      seasonPassXL: !!profile.seasonPassXL,
+                  });
+
+                  if (profile.seasonPass && getSetting('monitorSeasonPass')) {
+                      subscribe('Season Pass').then(ok => {
+                      });
+                  }
+                  if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
+                      subscribe('Season Pass XL').then(ok => {
+                      });
+                  }
+              })
+              .catch(err => {
+                  log('Profile fetch failed:', err.message);
+              });
+      });
+
       // ── Chat messages via SDK (normalised + structured) ────────────────
 
       onMessage((msg) => {
@@ -9083,7 +9576,7 @@
       // ── Startup toast ───────────────────────────────────────────────
 
       notify('FTL Extended loaded!', {
-          description: 'v2.1.0',
+          description: 'v2.1.1',
           type: 'success',
           duration: 3000,
       });
