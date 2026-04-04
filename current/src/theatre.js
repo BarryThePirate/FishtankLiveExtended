@@ -171,6 +171,12 @@ function injectStyles() {
             z-index: 52 !important;
         }
 
+        /* Ensure floating-ui dropdowns (TTS/SFX voice/room selects) appear above the backdrop */
+        body.${BODY_CLASS} [data-floating-ui-portal] {
+            position: relative;
+            z-index: 53 !important;
+        }
+
         /* Theatre mode transitions */
         body.${BODY_CLASS} .ftl-theatre-video {
             transition: width 0.3s ease, left 0.3s ease;
@@ -454,8 +460,8 @@ export function initTheatreButtonIntercept() {
         }
 
         // Check if it's the close/back button (X icon) while theatre is active
-        // Only match the X on the video player, not on modals or other popups
-        if (active && !btn.closest('#modal')) {
+        // Only match the X on the video player, not on modals, DMs, or other popups
+        if (active && !btn.closest('#modal') && !btn.closest('.fixed[draggable="false"]')) {
             const paths = btn.querySelectorAll('svg path');
             for (const p of paths) {
                 if (p.getAttribute('d')?.includes('M400 145.49')) {

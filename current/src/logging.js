@@ -141,6 +141,10 @@ function liveUpdate(type, rowElement) {
 // ── Public logging functions ────────────────────────────────────────
 
 export function logTts(msg) {
+    // Deduplicate across tabs
+    const messageId = msg.audioId || null;
+    if (messageId && ttsLog.some(e => e.audioId === messageId)) return;
+
     const entry = {
         displayName: msg.username || '???',
         message: msg.message,
@@ -155,6 +159,10 @@ export function logTts(msg) {
 }
 
 export function logSfx(msg) {
+    // Deduplicate across tabs — use audioFile as unique key
+    const sfxKey = msg.audioFile || null;
+    if (sfxKey && sfxLog.some(e => e.audioFile === sfxKey)) return;
+
     const entry = {
         displayName: msg.username || '???',
         message: msg.message,
@@ -168,6 +176,11 @@ export function logSfx(msg) {
 }
 
 export function logPing(msg) {
+    // Deduplicate across tabs — both tabs receive the same message
+    // via their own socket and write to the same localStorage
+    const messageId = msg.raw?.id || null;
+    if (messageId && pingsLog.some(e => e.messageId === messageId)) return;
+
     const entry = {
         displayName: msg.username || '???',
         message: msg.message,
@@ -176,6 +189,7 @@ export function logPing(msg) {
         endorsement: msg.endorsement || null,
         role: msg.role || null,
         chatRoom: msg.chatRoom || 'Global',
+        messageId,
         timestamp: Date.now(),
     };
     pushEntry(pingsLog, entry, 'pings');
@@ -190,6 +204,10 @@ export function logRoleMessage(msg) {
     const arr = role === 'staff' ? staffLog : role === 'mod' ? modLog : fishLog;
     const type = role;
 
+    // Deduplicate across tabs
+    const messageId = msg.raw?.id || null;
+    if (messageId && arr.some(e => e.messageId === messageId)) return;
+
     const entry = {
         displayName: msg.username || '???',
         message: msg.message,
@@ -199,6 +217,7 @@ export function logRoleMessage(msg) {
         endorsement: msg.endorsement || null,
         role,
         chatRoom: msg.chatRoom || 'Global',
+        messageId,
         timestamp: Date.now(),
     };
     pushEntry(arr, entry, type);

@@ -1,5 +1,25 @@
 const resolve = require('@rollup/plugin-node-resolve');
 const commonjs = require('@rollup/plugin-commonjs');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Rollup plugin to inject the version from manifest.json into the bundle.
+ * Replaces the placeholder '__BUILD_VERSION__' with 'vX.Y.Z' from the manifest.
+ */
+function injectVersion() {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'manifest.json'), 'utf-8'));
+    const version = `v${manifest.version}`;
+    return {
+        name: 'inject-version',
+        renderChunk(code) {
+            if (code.includes('__BUILD_VERSION__')) {
+                return { code: code.replace(/__BUILD_VERSION__/g, version), map: null };
+            }
+            return null;
+        },
+    };
+}
 
 /**
  * Rollup plugin to fix cross-realm ArrayBuffer instanceof failure
@@ -64,5 +84,6 @@ module.exports = {
         resolve({ browser: true }),
         commonjs(),
         firefoxArrayBufferFix(),
+        injectVersion(),
     ],
 };

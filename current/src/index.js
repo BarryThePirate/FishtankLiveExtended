@@ -139,7 +139,7 @@ site.whenReady(async () => {
         log('User ID detected:', userId);
         fetch(`https://api.fishtank.live/v1/profile/${userId}`)
             .then(r => r.json())
-            .then(data => {
+            .then(async (data) => {
                 const profile = data?.profile;
                 if (!profile) return;
 
@@ -149,15 +149,24 @@ site.whenReady(async () => {
                     seasonPassXL: !!profile.seasonPassXL,
                 });
 
+                // Subscribe to extra rooms, then re-emit Global on the
+                // primary socket so the server remembers Global as the
+                // last room — this ensures the site defaults to Global
+                // on the next page refresh.
+                let subscribed = false;
+
                 if (profile.seasonPass && getSetting('monitorSeasonPass')) {
-                    chat.rooms.subscribe('Season Pass').then(ok => {
-                        if (ok) log('Subscribed to Season Pass');
-                    });
+                    const ok = await chat.rooms.subscribe('Season Pass');
+                    if (ok) { log('Subscribed to Season Pass'); subscribed = true; }
                 }
                 if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
-                    chat.rooms.subscribe('Season Pass XL').then(ok => {
-                        if (ok) log('Subscribed to Season Pass XL');
-                    });
+                    const ok = await chat.rooms.subscribe('Season Pass XL');
+                    if (ok) { log('Subscribed to Season Pass XL'); subscribed = true; }
+                }
+
+                if (subscribed) {
+                    const raw = socket.getSocket();
+                    if (raw) raw.emit('chat:room', 'Global');
                 }
             })
             .catch(err => {
@@ -309,10 +318,31 @@ site.whenReady(async () => {
 
     initTheatreButtonIntercept();
 
+    // ── Video stutter fix ───────────────────────────────────────────
+    // The site's HLS player falls behind the live edge and attempts a
+    // gradual 1.1x catch-up that causes frame drops and freezing.
+    // This fix monitors the video element and snaps to the live edge
+    // when playback falls more than 3 seconds behind. It also resets
+    // the playback rate to 1x to prevent the decoder from struggling.
+
+    if (getSetting('videoStutterFix')) {
+        setInterval(() => {
+            const video = document.querySelector('video');
+            if (!video || !video.buffered.length) return;
+            if (video.playbackRate !== 1) video.playbackRate = 1;
+            const edge = video.buffered.end(video.buffered.length - 1);
+            const behind = edge - video.currentTime;
+            if (behind > 3) {
+                video.currentTime = edge - 0.5;
+                log('Video stutter fix: snapped to live edge, was', behind.toFixed(1) + 's behind');
+            }
+        }, 3000);
+    }
+
     // ── Startup toast ───────────────────────────────────────────────
 
     ui.toasts.notify('FTL Extended loaded!', {
-        description: 'v2.1.1',
+        description: '__BUILD_VERSION__',
         type: 'success',
         duration: 3000,
     });

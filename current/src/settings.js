@@ -13,6 +13,7 @@ const DEFAULTS = {
     enablePingIndicator: true,
     monitorSeasonPass: true,
     monitorSeasonPassXL: true,
+    videoStutterImprover: true,
     adminLogSize: 200,
     staffLogSize: 200,
     modLogSize: 200,
