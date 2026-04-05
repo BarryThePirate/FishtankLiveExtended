@@ -298,8 +298,8 @@
             // Mark as processed regardless of outcome
             processedIds.add(msg.id);
 
-            // Track for flood detection before filtering
-            if (msg.user?.id && msg.message && !config.skipTypes.includes(msg.user.id)) {
+            // Track for flood/duplicate detection only when anti-spam is active
+            if (settings.smartAntiSpam && msg.user?.id && msg.message && !config.skipTypes.includes(msg.user.id)) {
                 trackForFlood(msg.message, msg.user.id);
             }
 
@@ -311,7 +311,7 @@
             }
 
             // Track non-filtered messages for duplicate/rate detection
-            if (msg.user?.id && msg.message) {
+            if (settings.smartAntiSpam && msg.user?.id && msg.message) {
                 trackUserMessage(msg.message, msg.user.id);
             }
 
