@@ -11630,6 +11630,10 @@
         monitorSeasonPassXL: true,
         videoStutterImprover: true,
         smartAntiSpam: false,
+        hideTTSMessages: false,
+        hideSFXMessages: false,
+        hideStoxMessages: false,
+        chatWordFilters: [],
         adminLogSize: 200,
         staffLogSize: 200,
         modLogSize: 200,
@@ -13103,8 +13107,6 @@
             ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
-            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
-            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
         </div>
 
         <!-- Crafting tab -->
@@ -13157,6 +13159,28 @@
         <!-- Chat tab -->
         <div data-ftl-panel="chat" class="hidden">
             ${toggleRow('Smart Anti-Spam Filtering', 'smartAntiSpam', getSetting('smartAntiSpam'), 'Removes spam, repeated messages, and flood copypastas from chat')}
+            ${toggleRow('Hide TTS Messages', 'hideTTSMessages', getSetting('hideTTSMessages'), 'Remove TTS messages from the chat feed')}
+            ${toggleRow('Hide SFX Messages', 'hideSFXMessages', getSetting('hideSFXMessages'), 'Remove SFX messages from the chat feed')}
+            ${toggleRow('Hide StoX Messages', 'hideStoxMessages', getSetting('hideStoxMessages'), 'Remove StoX portfolio messages from the chat feed')}
+            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
+            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
+
+            <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
+                <div class="text-sm font-medium mb-1 opacity-75">Word / Phrase Filters</div>
+                <div class="text-xs opacity-40 mb-2">Messages containing these words or phrases will be hidden (case-insensitive)</div>
+                <div class="flex gap-1">
+                    <input data-ftl-word-filter-input type="text" placeholder="Add a word or phrase..." class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <button data-ftl-word-filter-add class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Add</div>
+                    </button>
+                </div>
+                <div data-ftl-word-filter-tags class="flex flex-wrap gap-1 mt-2">${(getSetting('chatWordFilters') || []).map(f =>
+        `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-dark-400/50 text-xs text-light-text border-1 border-dark-300/50">
+                        <span>${f}</span>
+                        <button data-ftl-word-filter-remove="${f}" class="cursor-pointer opacity-50 hover:opacity-100 hover:text-red-400" type="button">&times;</button>
+                    </span>`
+    ).join('')}</div>
+            </div>
         </div>
 
         <!-- Footer -->
@@ -13176,6 +13200,7 @@
         wireUpToggles(contentArea);
         wireUpCraftingSearch(contentArea);
         wireUpLogging(contentArea);
+        wireUpWordFilters(contentArea);
         wireUpTipLink(contentArea);
     }
 
@@ -13213,6 +13238,8 @@
     // ── Toggles ─────────────────────────────────────────────────────────
 
     function wireUpToggles(contentArea) {
+        const chatFilterKeys = ['smartAntiSpam', 'hideTTSMessages', 'hideSFXMessages', 'hideStoxMessages'];
+
         contentArea.querySelectorAll('[data-ftl-toggle]').forEach(toggle => {
             const key = toggle.getAttribute('data-ftl-toggle');
             const knob = toggle.querySelector('div');
@@ -13222,9 +13249,12 @@
                 knob.classList.toggle('left-[0px]', newVal);
                 knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
 
-                // Immediately notify page-level chat filter when anti-spam is toggled
-                if (key === 'smartAntiSpam') {
-                    window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: newVal }, '*');
+                // Immediately notify page-level chat filter when any chat setting changes
+                if (chatFilterKeys.includes(key)) {
+                    window.postMessage({
+                        type: 'ftl-chat-filter-settings',
+                        settings: Object.fromEntries(chatFilterKeys.map(k => [k, getSetting(k)])),
+                    }, '*');
                 }
             });
         });
@@ -13398,6 +13428,82 @@
     }
 
     // ── Tip link ────────────────────────────────────────────────────────
+
+    // ── Word filters ────────────────────────────────────────────────────
+
+    function sendWordFiltersToPageScript() {
+        const filters = getSetting('chatWordFilters') || [];
+        window.postMessage({
+            type: 'ftl-chat-filter-settings',
+            settings: {
+                smartAntiSpam: getSetting('smartAntiSpam'),
+                hideTTSMessages: getSetting('hideTTSMessages'),
+                hideSFXMessages: getSetting('hideSFXMessages'),
+                hideStoxMessages: getSetting('hideStoxMessages'),
+                wordFilters: filters,
+            },
+        }, '*');
+    }
+
+    function wireUpWordFilters(contentArea) {
+        const input = contentArea.querySelector('[data-ftl-word-filter-input]');
+        const addBtn = contentArea.querySelector('[data-ftl-word-filter-add]');
+        const tagsContainer = contentArea.querySelector('[data-ftl-word-filter-tags]');
+        if (!input || !addBtn || !tagsContainer) return;
+
+        function addFilter(phrase) {
+            phrase = phrase.trim();
+            if (!phrase) return;
+            const filters = getSetting('chatWordFilters') || [];
+            if (filters.some(f => f.toLowerCase() === phrase.toLowerCase())) return;
+            filters.push(phrase);
+            updateSetting('chatWordFilters', filters);
+            renderTags();
+            sendWordFiltersToPageScript();
+        }
+
+        function removeFilter(phrase) {
+            const filters = (getSetting('chatWordFilters') || []).filter(f => f !== phrase);
+            updateSetting('chatWordFilters', filters);
+            renderTags();
+            sendWordFiltersToPageScript();
+        }
+
+        function renderTags() {
+            const filters = getSetting('chatWordFilters') || [];
+            tagsContainer.innerHTML = filters.map(f =>
+                `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-dark-400/50 text-xs text-light-text border-1 border-dark-300/50">
+                <span>${f}</span>
+                <button data-ftl-word-filter-remove="${f}" class="cursor-pointer opacity-50 hover:opacity-100 hover:text-red-400" type="button">&times;</button>
+            </span>`
+            ).join('');
+
+            // Wire up remove buttons
+            tagsContainer.querySelectorAll('[data-ftl-word-filter-remove]').forEach(btn => {
+                btn.addEventListener('click', () => removeFilter(btn.getAttribute('data-ftl-word-filter-remove')));
+            });
+        }
+
+        addBtn.addEventListener('click', () => {
+            addFilter(input.value);
+            input.value = '';
+            input.focus();
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                addFilter(input.value);
+                input.value = '';
+            }
+        });
+
+        // Wire up initial remove buttons
+        tagsContainer.querySelectorAll('[data-ftl-word-filter-remove]').forEach(btn => {
+            btn.addEventListener('click', () => removeFilter(btn.getAttribute('data-ftl-word-filter-remove')));
+        });
+    }
 
     function wireUpTipLink(contentArea) {
         contentArea.querySelector('#ftl-tip-link')?.addEventListener('click', () => {
@@ -14565,26 +14671,32 @@
         // limitation.
 
         let detectedUserId = null;
+        const chatFilterKeys = ['smartAntiSpam', 'hideTTSMessages', 'hideSFXMessages', 'hideStoxMessages'];
+
+        function sendChatFilterSettings() {
+            const s = Object.fromEntries(chatFilterKeys.map(k => [k, getSetting(k)]));
+            s.wordFilters = getSetting('chatWordFilters') || [];
+            window.postMessage({ type: 'ftl-chat-filter-settings', settings: s }, '*');
+        }
 
         // Track user ID and keep sending it until the page script confirms receipt
         onUserIdDetected((userId) => {
             detectedUserId = userId;
         });
 
-        // Retry sending user ID and enabled state every second until confirmed
+        // Retry sending user ID and settings every second until confirmed
         const userIdInterval = setInterval(() => {
             if (detectedUserId) {
                 window.postMessage({ type: 'ftl-chat-filter-userid', userId: detectedUserId }, '*');
             }
-            window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+            sendChatFilterSettings();
         }, 1000);
 
         // Stop retrying user ID once the page script confirms
         window.addEventListener('message', (e) => {
             if (e.data?.type === 'ftl-chat-filter-userid-ack') {
                 clearInterval(userIdInterval);
-                // Send enabled state one final time after ack
-                window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+                sendChatFilterSettings();
             }
         });
 

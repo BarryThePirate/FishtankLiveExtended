@@ -60,12 +60,17 @@ if (fs.existsSync(classicDir)) {
     }
 }
 
-// current/bundle.js only
+// current/ runtime files
 if (fs.existsSync(path.join(ROOT, 'current', 'bundle.js'))) {
     files.push('current/bundle.js');
 } else {
     console.error('ERROR: current/bundle.js not found — run `npm run build` in current/ first');
     process.exit(1);
+}
+if (fs.existsSync(path.join(ROOT, 'current', 'chat-filter.js'))) {
+    files.push('current/chat-filter.js');
+} else {
+    console.warn('WARN: current/chat-filter.js not found, skipping');
 }
 
 // ── Display file list ───────────────────────────────────────────────

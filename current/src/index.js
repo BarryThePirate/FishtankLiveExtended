@@ -346,26 +346,32 @@ site.whenReady(async () => {
     // limitation.
 
     let detectedUserId = null;
+    const chatFilterKeys = ['smartAntiSpam', 'hideTTSMessages', 'hideSFXMessages', 'hideStoxMessages'];
+
+    function sendChatFilterSettings() {
+        const s = Object.fromEntries(chatFilterKeys.map(k => [k, getSetting(k)]));
+        s.wordFilters = getSetting('chatWordFilters') || [];
+        window.postMessage({ type: 'ftl-chat-filter-settings', settings: s }, '*');
+    }
 
     // Track user ID and keep sending it until the page script confirms receipt
     site.onUserIdDetected((userId) => {
         detectedUserId = userId;
     });
 
-    // Retry sending user ID and enabled state every second until confirmed
+    // Retry sending user ID and settings every second until confirmed
     const userIdInterval = setInterval(() => {
         if (detectedUserId) {
             window.postMessage({ type: 'ftl-chat-filter-userid', userId: detectedUserId }, '*');
         }
-        window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+        sendChatFilterSettings();
     }, 1000);
 
     // Stop retrying user ID once the page script confirms
     window.addEventListener('message', (e) => {
         if (e.data?.type === 'ftl-chat-filter-userid-ack') {
             clearInterval(userIdInterval);
-            // Send enabled state one final time after ack
-            window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+            sendChatFilterSettings();
         }
     });
 

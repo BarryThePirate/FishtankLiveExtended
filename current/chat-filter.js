@@ -29,10 +29,6 @@
         rateLimitCount: 5,
         // Rate limit: time window in ms
         rateLimitWindow: 5000,
-        // Custom word filters (contains, case-insensitive)
-        wordFilters: [],
-        // Exact match filters (case-insensitive, after trimming)
-        exactFilters: [],
         // Skip filtering for these message types (user.id values for special messages)
         skipTypes: ['tts', 'sfx', 'system', 'emote', 'happening'],
     };
@@ -40,7 +36,13 @@
     // ── State ────────────────────────────────────────────────────────
     let store = null;
     let currentUserId = null;
-    let enabled = false;
+    let settings = {
+        smartAntiSpam: false,
+        hideTTSMessages: false,
+        hideSFXMessages: false,
+        hideStoxMessages: false,
+        wordFilters: [],
+    };
 
     // Per-user recent message tracking: userId -> [{text, timestamp}]
     const userMessageHistory = new Map();
@@ -81,16 +83,20 @@
         return null;
     }
 
-    // ── Detect logged-in user (received from content script) ──────────
+    // ── Receive settings from content script ────────────────────────
     window.addEventListener('message', (e) => {
         if (e.data?.type === 'ftl-chat-filter-userid' && e.data.userId && !currentUserId) {
             currentUserId = e.data.userId;
             if (DEBUG) console.log(LOG_PREFIX, 'Current user ID:', currentUserId);
             window.postMessage({ type: 'ftl-chat-filter-userid-ack' }, '*');
         }
-        if (e.data?.type === 'ftl-chat-filter-enabled') {
-            enabled = !!e.data.enabled;
-            if (DEBUG) console.log(LOG_PREFIX, 'Filtering', enabled ? 'enabled' : 'disabled');
+        if (e.data?.type === 'ftl-chat-filter-settings' && e.data.settings) {
+            const changed = JSON.stringify(settings) !== JSON.stringify(e.data.settings);
+            Object.assign(settings, e.data.settings);
+            if (changed) {
+                if (DEBUG) console.log(LOG_PREFIX, 'Settings updated:', settings);
+                applyFilter();
+            }
         }
     });
 
@@ -211,35 +217,49 @@
     }
 
     /**
-     * Check against custom word filters.
+     * Check against custom word filters (from user settings).
      */
     function matchesWordFilter(message) {
+        const filters = settings.wordFilters || [];
+        if (filters.length === 0) return null;
         const lower = normalise(message);
-        for (const filter of config.wordFilters) {
+        for (const filter of filters) {
             if (lower.includes(normalise(filter))) return filter;
-        }
-        for (const filter of config.exactFilters) {
-            if (lower === normalise(filter)) return filter;
         }
         return null;
     }
 
     // ── Main filter ─────────────────────────────────────────────────
     function shouldFilter(msg) {
-        // Skip own messages
-        if (currentUserId && msg.user?.id === currentUserId) return null;
-
-        // Skip system/special message types
         const userId = msg.user?.id;
+
+        // Hide TTS messages
+        if (settings.hideTTSMessages && userId === 'tts') return 'hide TTS';
+
+        // Hide SFX messages
+        if (settings.hideSFXMessages && userId === 'sfx') return 'hide SFX';
+
+        // Hide StoX messages
+        if (settings.hideStoxMessages && msg.metadata?.portfolioValue !== undefined) return 'hide StoX';
+
+        // Custom word filters (always active when filters exist, skip own messages)
+        if (msg.message && !(currentUserId && userId === currentUserId)) {
+            const wordMatch = matchesWordFilter(msg.message);
+            if (wordMatch) return `word filter: "${wordMatch}"`;
+        }
+
+        // Anti-spam checks only run when enabled
+        if (!settings.smartAntiSpam) return null;
+
+        // Skip own messages
+        if (currentUserId && userId === currentUserId) return null;
+
+        // Skip system/special message types (don't spam-check these)
         if (config.skipTypes.includes(userId)) return null;
         if (msg.type && config.skipTypes.includes(msg.type)) return null;
 
         const message = msg.message;
         if (!message) return null;
-
-        // Custom word filters
-        const wordMatch = matchesWordFilter(message);
-        if (wordMatch) return `word filter: "${wordMatch}"`;
 
         // Repetitious patterns
         if (isRepetitious(message)) return 'repetitious';
@@ -260,7 +280,10 @@
     const processedIds = new Set();
 
     function applyFilter() {
-        if (!store || !enabled) return;
+        if (!store) return;
+        // Check if any filtering is active
+        const hasWordFilters = (settings.wordFilters || []).length > 0;
+        if (!settings.smartAntiSpam && !settings.hideTTSMessages && !settings.hideSFXMessages && !settings.hideStoxMessages && !hasWordFilters) return;
         const state = store.getState();
         const messages = state.chatMessages;
         if (!messages || messages.length === 0) return;
@@ -369,13 +392,4 @@
         }
     }, 1000);
 
-    // ── Listen for config updates from content script ────────────────
-    window.addEventListener('ftl-chat-filter-config', (e) => {
-        try {
-            const update = e.detail || JSON.parse(e.data);
-            Object.assign(config, update);
-            if (DEBUG) console.log(LOG_PREFIX, 'Config updated:', update);
-            applyFilter();
-        } catch {}
-    });
 })();
