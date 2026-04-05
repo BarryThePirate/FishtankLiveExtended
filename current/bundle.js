@@ -13023,6 +13023,121 @@
         }
     }
 
+    // ── IRC mode ────────────────────────────────────────────────────────
+
+    let ircActive = false;
+    let ircSavedPanelStyle = null;
+    let ircSavedChild1Style = null;
+
+    function toggleIrcMode() {
+        ircActive = !ircActive;
+
+        const panel = document.querySelector('.fixed.bottom-0.right-0');
+        const parent = panel?.closest('.relative');
+
+        if (!panel || !parent) return;
+
+        if (ircActive) {
+            // Save original inline styles
+            ircSavedPanelStyle = panel.style.cssText;
+            ircSavedChild1Style = panel.children[1]?.style.cssText || '';
+
+            // Hide both map containers (one above panel, one inside chat)
+            panel.children[0].style.setProperty('display', 'none', 'important');
+            panel.querySelector('.shrink-0.mt-2.pb-2')?.style.setProperty('display', 'none', 'important');
+
+            // Expand chat panel to fill viewport
+            panel.style.setProperty('left', '0', 'important');
+            panel.style.setProperty('top', '0', 'important');
+            panel.style.setProperty('width', '100vw', 'important');
+            panel.style.setProperty('height', '100vh', 'important');
+            panel.style.setProperty('margin', '0', 'important');
+            panel.style.setProperty('transform', 'none', 'important');
+
+            // Make chat box fill the panel
+            panel.children[1].style.setProperty('height', '100%', 'important');
+
+            // Bring parent stacking context above everything
+            parent.style.setProperty('z-index', '9999', 'important');
+        } else {
+            // Restore map containers
+            panel.children[0].style.removeProperty('display');
+            panel.querySelector('.shrink-0.mt-2.pb-2')?.style.removeProperty('display');
+
+            // Restore original styles
+            panel.style.cssText = ircSavedPanelStyle || '';
+            panel.children[1].style.cssText = ircSavedChild1Style || '';
+
+            // If theatre mode is active, keep z-index high enough to stay above backdrop
+            if (document.body.classList.contains('ftl-theatre-mode')) {
+                parent.style.setProperty('z-index', '51', 'important');
+            } else {
+                parent.style.removeProperty('z-index');
+            }
+
+            ircSavedPanelStyle = null;
+            ircSavedChild1Style = null;
+        }
+
+        // Update button state
+        const btn = document.querySelector('[data-ftl-sdk="irc-btn"] button');
+        if (btn) {
+            btn.classList.toggle('opacity-50', !ircActive);
+            btn.classList.toggle('saturate-0', !ircActive);
+        }
+    }
+
+    function isIrcActive() {
+        return ircActive;
+    }
+
+    function tryInjectIrcButton() {
+        // Skip on mobile — mobile layout already works as an IRC-style view
+        if (window.innerWidth < 1024) return;
+
+        const chatLabels = document.querySelectorAll('span.font-bold.text-dark-text');
+        let chatHeader = null;
+        for (const label of chatLabels) {
+            if (label.textContent.trim() === 'Chat') {
+                chatHeader = label.closest('.flex.items-center.px-1');
+                break;
+            }
+        }
+        if (!chatHeader) return;
+
+        if (chatHeader.querySelector('[data-ftl-sdk="irc-btn"]')) return;
+
+        const btnContainer = chatHeader.querySelector('.flex.items-center.gap-0\\.5');
+        if (!btnContainer) return;
+
+        // Allow buttons to wrap to a second row on narrower layouts
+        btnContainer.style.setProperty('flex-wrap', 'wrap', 'important');
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'relative translate-y-[2px]';
+        wrapper.setAttribute('data-ftl-sdk', 'irc-btn');
+
+        const btn = document.createElement('button');
+        btn.className = 'bg-gradient-to-r from-purple-400 to-purple-500/90 active:to-purple-600/75 p-0.5 inline-flex items-center justify-center cursor-pointer rounded-md hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary pointer-events-auto transition-[opacity,filter] duration-300 opacity-50 saturate-0';
+        btn.type = 'button';
+        btn.title = 'IRC Mode';
+        btn.innerHTML = `
+        <div class="text-light-text bg-gradient-to-t from-purple-400 to-purple-500 active:bg-gradient-to-b active:from-purple-500 active:to-purple-300 border-light/25 active:border-light/15 p-0.5 rounded-sm">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 3h18v2H3V3zm0 4h18v2H3V7zm0 4h12v2H3v-2zm0 4h18v2H3v-2zm0 4h12v2H3v-2z"/>
+            </svg>
+        </div>
+    `;
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleIrcMode();
+        });
+
+        wrapper.appendChild(btn);
+        btnContainer.insertBefore(wrapper, btnContainer.firstChild);
+    }
+
     // ── Settings modal ──────────────────────────────────────────────────
 
     let pendingTab = null;
@@ -14607,6 +14722,7 @@
         });
         register('theatre-exit',      { key: 'escape', preventDefault: false }, () => {
             if (isTheatreActive()) exitTheatre();
+            if (isIrcActive()) toggleIrcMode();
         });
         register('open-craft',        { key: 'c' }, shortcutIf(() => openModal('craftItem')));
         register('open-item-market',  { key: 'm' }, shortcutIf(() => openModal('itemMarket')));
@@ -14635,9 +14751,10 @@
 
         initZoneDetection();
 
-        // ── Ping button in chat header ──────────────────────────────────
+        // ── Ping & IRC buttons in chat header ─────────────────────────────
 
         tryInjectPingButton();
+        tryInjectIrcButton();
         setOnPingCountChange(updatePingBadge);
 
         // ── Theatre mode button intercept ───────────────────────────────
@@ -14708,7 +14825,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.1.2',
+            description: 'v2.2.0',
             type: 'success',
             duration: 3000,
         });

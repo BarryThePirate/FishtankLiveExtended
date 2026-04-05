@@ -22,7 +22,7 @@ import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
 import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast, setOnPingCountChange } from './logging.js';
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
-import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
+import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, tryInjectIrcButton, toggleIrcMode, isIrcActive, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
@@ -282,6 +282,7 @@ site.whenReady(async () => {
     });
     ui.keyboard.register('theatre-exit',      { key: 'escape', preventDefault: false }, () => {
         if (isTheatreActive()) exitTheatre();
+        if (isIrcActive()) toggleIrcMode();
     });
     ui.keyboard.register('open-craft',        { key: 'c' }, shortcutIf(() => openModal('craftItem')));
     ui.keyboard.register('open-item-market',  { key: 'm' }, shortcutIf(() => openModal('itemMarket')));
@@ -310,9 +311,10 @@ site.whenReady(async () => {
 
     initZoneDetection();
 
-    // ── Ping button in chat header ──────────────────────────────────
+    // ── Ping & IRC buttons in chat header ─────────────────────────────
 
     tryInjectPingButton();
+    tryInjectIrcButton();
     setOnPingCountChange(updatePingBadge);
 
     // ── Theatre mode button intercept ───────────────────────────────
