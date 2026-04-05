@@ -19,7 +19,7 @@ Version 2.0.0 is a complete rewrite for the current fishtank.live site, powered 
 
 ## Settings
 - Press **E** at any time to open the FTL Extended settings panel
-- Three tabs: General, Crafting, and Logging
+- Four tabs: General, Crafting, Logging, and Chat
 - All settings are saved and persist across sessions
 
 ## General
@@ -28,8 +28,17 @@ Version 2.0.0 is a complete rewrite for the current fishtank.live site, powered 
 - **Keyboard Shortcuts**: Q (Settings), P (Edit Profile), H (Help), X (Season Pass), C (Craft), M (Item Market), S (Stox). All togglable in settings. E always works
 - **Hidden Clickable Zones**: reveals secret clickable areas on the video player with a golden highlight on hover. Togglable in settings
 - **Season Pass Popup Suppression**: automatically closes the season pass popup and removes the banner. Togglable in settings
+- **Video Stutter Improver**: automatically resets the playback rate and snaps to the live edge when the stream falls behind, preventing the freeze-and-fast-forward cycle caused by the site's built-in catch-up mechanism. Togglable in settings
 - **Inventory Search**: adds a search box to the inventory popup and the crafting modal's item select grid, filtering items by name as you type. Also works in the trade modal. Togglable in settings
 - **Ping Indicator**: a button in the chat header that dims when you have no unread pings and lights up when someone @mentions you — click it to jump straight to the pings log. Togglable in settings
+
+## Chat
+- **Smart Anti-Spam Filtering**: removes spam from the chat feed in real time by detecting repetitious messages, duplicate messages from the same user, flood/copypasta raids, and rate-limited users. Skips your own messages and system messages. Off by default
+- **Word / Phrase Filters**: add custom words or phrases to automatically hide any chat message containing them. Case-insensitive. Filters are saved across sessions and take effect immediately
+- **Hide TTS Messages**: removes TTS messages from the chat feed. Togglable in settings
+- **Hide SFX Messages**: removes SFX messages from the chat feed. Togglable in settings
+- **Hide StoX Messages**: removes StoX portfolio messages from the chat feed. Togglable in settings
+- **Monitor Season Pass Chat**: automatically monitors Season Pass and Season Pass XL chat rooms if you have the corresponding pass, logging messages and pings with SP/XL badges. Togglable in settings
 
 ## Crafting
 - **Recipe Hints (Crafting Bench)**: when you open the crafting bench and select items, matching recipes are shown automatically. Select one item to see all recipes that use it, select two to see the result
@@ -43,17 +52,20 @@ All logs are accessible from the Logging tab in the FTL Extended settings panel.
 - **Staff Messages**: logs chat messages from staff members with their distinctive styling
 - **Mod Messages**: logs chat messages from moderators
 - **Fish Messages**: logs chat messages from contestants (fish)
-- **Pings**: logs any chat message that mentions your username
+- **Pings**: logs any chat message that mentions your username, across all monitored rooms
 - **TTS**: logs all approved TTS messages with voice, room name, and a play button to hear the audio
 - **SFX**: logs all SFX with room name and a play button to hear the audio
 
-All chat-style logs display with avatars, usernames (click to @mention), role-specific styling, and timestamps matching the site's own chat layout.
+All chat-style logs display with avatars, usernames (click to @mention), role-specific styling, and timestamps matching the site's own chat layout. Logs are deduplicated across multiple tabs.
 
 ## Technical Details
 - Chat, TTS, and SFX data is captured via a dedicated Socket.IO connection (not DOM scraping), ensuring no messages are missed
+- Chat filtering operates at the Zustand store level, removing messages from React state before they render — no DOM manipulation, no flickering
 - Socket health is monitored — if no events are received for 60 seconds, the connection is automatically reconnected
+- Season Pass room monitoring creates separate authenticated WebSocket connections per room
 - Zero persistent MutationObservers on document.body (performance critical — the site renders thousands of chat mutations per second)
 - Room names are resolved via the fishtank.live API and cached locally
+- Cross-tab log deduplication prevents duplicate entries when multiple tabs are open
 
 <h1 align="center">Features (Classic Site)</h1>
 
@@ -102,7 +114,7 @@ To test changes, you need to click the Reload button on the extension in the `ab
 
 <h1 align="center">Building From Source</h1>
 
-The current site version uses a bundled JavaScript file built with Rollup.
+The current site version uses a bundled JavaScript file built with Rollup. The chat filter runs as a separate page-level script (not bundled) to access React internals.
 
 ```bash
 # Install dependencies (first time only)

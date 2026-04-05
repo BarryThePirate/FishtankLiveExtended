@@ -372,7 +372,8 @@
         if (store) {
             clearInterval(findInterval);
 
-            console.log(LOG_PREFIX, 'Store found, anti-spam active');
+            console.log(LOG_PREFIX, 'Store found, chat filtering ready');
+            if (settings.smartAntiSpam) console.log(LOG_PREFIX, 'Smart anti-spam active');
             lastLength = store.getState().chatMessages.length;
 
             // Subscribe to store changes
