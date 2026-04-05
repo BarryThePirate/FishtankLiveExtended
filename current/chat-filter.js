@@ -1,0 +1,381 @@
+/**
+ * chat-filter.js — Page-level chat filter
+ *
+ * Injected into the page realm by the extension to access the
+ * React/Zustand chat store directly. Filters spam, repetitious
+ * messages, floods, and custom word filters.
+ *
+ * Runs entirely in the page context (not content script).
+ */
+(function() {
+    const LOG_PREFIX = '[FTL Chat Filter]';
+    const DEBUG = false;
+
+    // ── Configuration ───────────────────────────────────────────────
+    const config = {
+        // Repetition: filter if unique words / total words ratio is below this
+        uniqueWordRatioThreshold: 0.25,
+        // Repetition: minimum word count before checking ratio
+        minWordsForRepetitionCheck: 6,
+        // Duplicate: time window in ms to consider messages as duplicates
+        duplicateTimeWindow: 30000,
+        // Flood: number of users posting the same message to trigger flood detection
+        floodUserThreshold: 5,
+        // Flood: time window in ms for flood detection
+        floodTimeWindow: 10000,
+        // Flood: how long to auto-filter a flooded message (ms)
+        floodMuteDuration: 60000,
+        // Rate limit: max messages per user in time window
+        rateLimitCount: 5,
+        // Rate limit: time window in ms
+        rateLimitWindow: 5000,
+        // Custom word filters (contains, case-insensitive)
+        wordFilters: [],
+        // Exact match filters (case-insensitive, after trimming)
+        exactFilters: [],
+        // Skip filtering for these message types (user.id values for special messages)
+        skipTypes: ['tts', 'sfx', 'system', 'emote', 'happening'],
+    };
+
+    // ── State ────────────────────────────────────────────────────────
+    let store = null;
+    let currentUserId = null;
+    let enabled = false;
+
+    // Per-user recent message tracking: userId -> [{text, timestamp}]
+    const userMessageHistory = new Map();
+
+    // Flood detection: normalised text -> [{userId, timestamp}]
+    const floodTracker = new Map();
+
+    // Auto-blocked flood messages: normalised text -> expiry timestamp
+    const floodBlockList = new Map();
+
+    // ── Store finder ────────────────────────────────────────────────
+    function findStore() {
+        const el = document.querySelector('[data-react-window-index]');
+        if (!el) return null;
+        const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber$'));
+        if (!fiberKey) return null;
+        let fiber = el[fiberKey];
+
+        for (let i = 0; i < 30; i++) {
+            if (!fiber.return) return null;
+            fiber = fiber.return;
+
+            let hook = fiber.memoizedState;
+            while (hook) {
+                const ms = hook.memoizedState;
+                if (Array.isArray(ms) && ms.length === 2 && ms[1] && typeof ms[1] === 'object') {
+                    const inner = ms[1];
+                    if (inner[0] && typeof inner[0].getState === 'function') {
+                        const state = inner[0].getState();
+                        if (state?.chatMessages) {
+                            return inner[0];
+                        }
+                    }
+                }
+                hook = hook.next;
+            }
+        }
+        return null;
+    }
+
+    // ── Detect logged-in user (received from content script) ──────────
+    window.addEventListener('message', (e) => {
+        if (e.data?.type === 'ftl-chat-filter-userid' && e.data.userId && !currentUserId) {
+            currentUserId = e.data.userId;
+            if (DEBUG) console.log(LOG_PREFIX, 'Current user ID:', currentUserId);
+            window.postMessage({ type: 'ftl-chat-filter-userid-ack' }, '*');
+        }
+        if (e.data?.type === 'ftl-chat-filter-enabled') {
+            enabled = !!e.data.enabled;
+            if (DEBUG) console.log(LOG_PREFIX, 'Filtering', enabled ? 'enabled' : 'disabled');
+        }
+    });
+
+    // ── Text helpers ────────────────────────────────────────────────
+    function normalise(text) {
+        return (text || '').toLowerCase().trim();
+    }
+
+    function cleanForComparison(text) {
+        return normalise(text).replace(/[^a-z0-9\s]/g, '');
+    }
+
+    // ── Spam detection functions ────────────────────────────────────
+
+    /**
+     * Check if a message is repetitious (same words/patterns repeated).
+     * e.g. "L L L L L L L" or "spam spam spam spam"
+     */
+    function isRepetitious(message) {
+        const words = cleanForComparison(message).split(/\s+/).filter(Boolean);
+        if (words.length < config.minWordsForRepetitionCheck) return false;
+
+        const unique = new Set(words);
+        const ratio = unique.size / words.length;
+        return ratio < config.uniqueWordRatioThreshold;
+    }
+
+    /**
+     * Check if user sent the same or very similar message recently.
+     */
+    function isDuplicate(message, userId) {
+        const now = Date.now();
+        const history = userMessageHistory.get(userId);
+        if (!history) return false;
+
+        const cleaned = cleanForComparison(message);
+        return history.some(entry => {
+            if (now - entry.timestamp > config.duplicateTimeWindow) return false;
+            return entry.text === cleaned;
+        });
+    }
+
+    /**
+     * Check if this message is part of a flood (many users posting the same thing).
+     */
+    function isFlood(message) {
+        const now = Date.now();
+        const cleaned = cleanForComparison(message);
+        if (!cleaned || cleaned.length < 10) return false;
+
+        // Check if this message is currently auto-blocked from a previous flood
+        const blockExpiry = floodBlockList.get(cleaned);
+        if (blockExpiry && now < blockExpiry) return true;
+
+        return false;
+    }
+
+    /**
+     * Track a message for flood detection. Call this BEFORE filtering.
+     * If enough unique users post the same message, add it to the block list.
+     */
+    function trackForFlood(message, userId) {
+        const now = Date.now();
+        const cleaned = cleanForComparison(message);
+        if (!cleaned || cleaned.length < 10) return;
+
+        if (!floodTracker.has(cleaned)) {
+            floodTracker.set(cleaned, []);
+        }
+
+        const entries = floodTracker.get(cleaned);
+
+        // Remove old entries
+        while (entries.length > 0 && now - entries[0].timestamp > config.floodTimeWindow) {
+            entries.shift();
+        }
+
+        // Don't count the same user twice
+        if (!entries.some(e => e.userId === userId)) {
+            entries.push({ userId, timestamp: now });
+        }
+
+        // If enough unique users posted this, block it
+        if (entries.length >= config.floodUserThreshold) {
+            floodBlockList.set(cleaned, now + config.floodMuteDuration);
+            if (DEBUG) console.log(LOG_PREFIX, 'Flood detected, auto-blocking:', JSON.stringify(message.substring(0, 50)));
+        }
+    }
+
+    /**
+     * Check if user is sending too many messages too fast.
+     */
+    function isRateLimited(userId) {
+        const now = Date.now();
+        const history = userMessageHistory.get(userId);
+        if (!history) return false;
+
+        const recent = history.filter(e => now - e.timestamp < config.rateLimitWindow);
+        return recent.length >= config.rateLimitCount;
+    }
+
+    /**
+     * Track a message in the user's history.
+     */
+    function trackUserMessage(message, userId) {
+        const now = Date.now();
+        const cleaned = cleanForComparison(message);
+
+        if (!userMessageHistory.has(userId)) {
+            userMessageHistory.set(userId, []);
+        }
+
+        const history = userMessageHistory.get(userId);
+        history.push({ text: cleaned, timestamp: now });
+
+        // Keep only recent entries
+        while (history.length > 20) history.shift();
+    }
+
+    /**
+     * Check against custom word filters.
+     */
+    function matchesWordFilter(message) {
+        const lower = normalise(message);
+        for (const filter of config.wordFilters) {
+            if (lower.includes(normalise(filter))) return filter;
+        }
+        for (const filter of config.exactFilters) {
+            if (lower === normalise(filter)) return filter;
+        }
+        return null;
+    }
+
+    // ── Main filter ─────────────────────────────────────────────────
+    function shouldFilter(msg) {
+        // Skip own messages
+        if (currentUserId && msg.user?.id === currentUserId) return null;
+
+        // Skip system/special message types
+        const userId = msg.user?.id;
+        if (config.skipTypes.includes(userId)) return null;
+        if (msg.type && config.skipTypes.includes(msg.type)) return null;
+
+        const message = msg.message;
+        if (!message) return null;
+
+        // Custom word filters
+        const wordMatch = matchesWordFilter(message);
+        if (wordMatch) return `word filter: "${wordMatch}"`;
+
+        // Repetitious patterns
+        if (isRepetitious(message)) return 'repetitious';
+
+        // Flood (copypasta raids)
+        if (isFlood(message)) return 'flood';
+
+        // Duplicate from same user
+        if (userId && isDuplicate(message, userId)) return 'duplicate';
+
+        // Rate limiting
+        if (userId && isRateLimited(userId)) return 'rate limited';
+
+        return null;
+    }
+
+    // Set of message IDs we've already processed (to avoid re-tracking)
+    const processedIds = new Set();
+
+    function applyFilter() {
+        if (!store || !enabled) return;
+        const state = store.getState();
+        const messages = state.chatMessages;
+        if (!messages || messages.length === 0) return;
+
+        let removed = 0;
+        const reasons = {};
+
+        const filtered = messages.filter(msg => {
+            // Already processed — keep it, don't re-check
+            if (processedIds.has(msg.id)) return true;
+
+            // Mark as processed regardless of outcome
+            processedIds.add(msg.id);
+
+            // Track for flood detection before filtering
+            if (msg.user?.id && msg.message && !config.skipTypes.includes(msg.user.id)) {
+                trackForFlood(msg.message, msg.user.id);
+            }
+
+            const reason = shouldFilter(msg);
+            if (reason) {
+                removed++;
+                reasons[reason] = (reasons[reason] || 0) + 1;
+                return false;
+            }
+
+            // Track non-filtered messages for duplicate/rate detection
+            if (msg.user?.id && msg.message) {
+                trackUserMessage(msg.message, msg.user.id);
+            }
+
+            return true;
+        });
+
+        if (removed > 0) {
+            store.setState({ chatMessages: filtered });
+            if (DEBUG) {
+                const summary = Object.entries(reasons).map(([r, c]) => `${r}: ${c}`).join(', ');
+                console.log(LOG_PREFIX, `Removed ${removed} messages (${summary})`);
+            }
+        }
+
+        // Cap processedIds to prevent unbounded growth
+        if (processedIds.size > 2000) {
+            const idsArray = [...processedIds];
+            processedIds.clear();
+            for (let i = idsArray.length - 1000; i < idsArray.length; i++) {
+                processedIds.add(idsArray[i]);
+            }
+        }
+    }
+
+    // ── Cleanup stale tracking data ─────────────────────────────────
+    function cleanup() {
+        const now = Date.now();
+
+        // Clean user history
+        for (const [userId, history] of userMessageHistory) {
+            const recent = history.filter(e => now - e.timestamp < 60000);
+            if (recent.length === 0) {
+                userMessageHistory.delete(userId);
+            } else {
+                userMessageHistory.set(userId, recent);
+            }
+        }
+
+        // Clean flood tracker
+        for (const [text, entries] of floodTracker) {
+            const recent = entries.filter(e => now - e.timestamp < config.floodTimeWindow);
+            if (recent.length === 0) {
+                floodTracker.delete(text);
+            }
+        }
+
+        // Clean expired flood blocks
+        for (const [text, expiry] of floodBlockList) {
+            if (now > expiry) floodBlockList.delete(text);
+        }
+    }
+
+    // ── Initialisation ──────────────────────────────────────────────
+    let lastLength = 0;
+
+    const findInterval = setInterval(() => {
+        store = findStore();
+        if (store) {
+            clearInterval(findInterval);
+
+            console.log(LOG_PREFIX, 'Store found, anti-spam active');
+            lastLength = store.getState().chatMessages.length;
+
+            // Subscribe to store changes
+            store.subscribe(() => {
+                const current = store.getState().chatMessages.length;
+                if (current > lastLength) {
+                    applyFilter();
+                }
+                lastLength = store.getState().chatMessages.length;
+            });
+
+            // Apply once for existing messages
+            applyFilter();
+
+            // Periodic cleanup of stale tracking data
+            setInterval(cleanup, 30000);
+        }
+    }, 1000);
+
+    // ── Listen for config updates from content script ────────────────
+    window.addEventListener('ftl-chat-filter-config', (e) => {
+        try {
+            const update = e.detail || JSON.parse(e.data);
+            Object.assign(config, update);
+            if (DEBUG) console.log(LOG_PREFIX, 'Config updated:', update);
+            applyFilter();
+        } catch {}
+    });
+})();

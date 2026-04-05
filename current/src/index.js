@@ -137,6 +137,7 @@ site.whenReady(async () => {
 
     site.onUserIdDetected((userId) => {
         log('User ID detected:', userId);
+
         fetch(`https://api.fishtank.live/v1/profile/${userId}`)
             .then(r => r.json())
             .then(async (data) => {
@@ -338,6 +339,40 @@ site.whenReady(async () => {
             }
         }, 3000);
     }
+
+    // ── Chat filter (page-level script injection) ────────────────────
+    // Injects a script into the page realm to access the React/Zustand
+    // chat store directly. This bypasses the content script cross-realm
+    // limitation.
+
+    let detectedUserId = null;
+
+    // Track user ID and keep sending it until the page script confirms receipt
+    site.onUserIdDetected((userId) => {
+        detectedUserId = userId;
+    });
+
+    // Retry sending user ID and enabled state every second until confirmed
+    const userIdInterval = setInterval(() => {
+        if (detectedUserId) {
+            window.postMessage({ type: 'ftl-chat-filter-userid', userId: detectedUserId }, '*');
+        }
+        window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+    }, 1000);
+
+    // Stop retrying user ID once the page script confirms
+    window.addEventListener('message', (e) => {
+        if (e.data?.type === 'ftl-chat-filter-userid-ack') {
+            clearInterval(userIdInterval);
+            // Send enabled state one final time after ack
+            window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+        }
+    });
+
+    const chatFilterScript = document.createElement('script');
+    chatFilterScript.src = chrome.runtime.getURL('current/chat-filter.js');
+    document.documentElement.appendChild(chatFilterScript);
+    chatFilterScript.onload = () => chatFilterScript.remove();
 
     // ── Startup toast ───────────────────────────────────────────────
 

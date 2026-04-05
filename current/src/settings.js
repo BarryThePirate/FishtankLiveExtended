@@ -14,6 +14,7 @@ const DEFAULTS = {
     monitorSeasonPass: true,
     monitorSeasonPassXL: true,
     videoStutterImprover: true,
+    smartAntiSpam: false,
     adminLogSize: 200,
     staffLogSize: 200,
     modLogSize: 200,

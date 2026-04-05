@@ -11629,6 +11629,7 @@
         monitorSeasonPass: true,
         monitorSeasonPassXL: true,
         videoStutterImprover: true,
+        smartAntiSpam: false,
         adminLogSize: 200,
         staffLogSize: 200,
         modLogSize: 200,
@@ -13088,6 +13089,9 @@
             <button data-ftl-tab="logging" class="bg-gradient-to-r from-tertiary-500 to-tertiary-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
                 <div class="text-light-text bg-gradient-to-t from-tertiary-400 to-tertiary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Logging</div>
             </button>
+            <button data-ftl-tab="chat" class="bg-gradient-to-r from-purple-500 to-purple-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
+                <div class="text-light-text bg-gradient-to-t from-purple-400 to-purple-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Chat</div>
+            </button>
         </div>
 
         <!-- General tab -->
@@ -13096,9 +13100,9 @@
             ${toggleRow('Keyboard Shortcuts', 'enableKeyboardShortcuts', getSetting('enableKeyboardShortcuts'), 'Q P H X C M S &nbsp;(E always works)')}
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
+            ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
-            ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
             ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
             ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
         </div>
@@ -13148,6 +13152,11 @@
             <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 500px; max-height: 50dvh; overflow-x: hidden; scrollbar-width: thin;">
                 <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
             </div>
+        </div>
+
+        <!-- Chat tab -->
+        <div data-ftl-panel="chat" class="hidden">
+            ${toggleRow('Smart Anti-Spam Filtering', 'smartAntiSpam', getSetting('smartAntiSpam'), 'Removes spam, repeated messages, and flood copypastas from chat')}
         </div>
 
         <!-- Footer -->
@@ -13212,6 +13221,11 @@
                 updateSetting(key, newVal);
                 knob.classList.toggle('left-[0px]', newVal);
                 knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
+
+                // Immediately notify page-level chat filter when anti-spam is toggled
+                if (key === 'smartAntiSpam') {
+                    window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: newVal }, '*');
+                }
             });
         });
     }
@@ -14343,6 +14357,7 @@
         // to additional rooms if they have access and haven't turned it off.
 
         onUserIdDetected((userId) => {
+
             fetch(`https://api.fishtank.live/v1/profile/${userId}`)
                 .then(r => r.json())
                 .then(async (data) => {
@@ -14543,6 +14558,40 @@
                 }
             }, 3000);
         }
+
+        // ── Chat filter (page-level script injection) ────────────────────
+        // Injects a script into the page realm to access the React/Zustand
+        // chat store directly. This bypasses the content script cross-realm
+        // limitation.
+
+        let detectedUserId = null;
+
+        // Track user ID and keep sending it until the page script confirms receipt
+        onUserIdDetected((userId) => {
+            detectedUserId = userId;
+        });
+
+        // Retry sending user ID and enabled state every second until confirmed
+        const userIdInterval = setInterval(() => {
+            if (detectedUserId) {
+                window.postMessage({ type: 'ftl-chat-filter-userid', userId: detectedUserId }, '*');
+            }
+            window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+        }, 1000);
+
+        // Stop retrying user ID once the page script confirms
+        window.addEventListener('message', (e) => {
+            if (e.data?.type === 'ftl-chat-filter-userid-ack') {
+                clearInterval(userIdInterval);
+                // Send enabled state one final time after ack
+                window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: getSetting('smartAntiSpam') }, '*');
+            }
+        });
+
+        const chatFilterScript = document.createElement('script');
+        chatFilterScript.src = chrome.runtime.getURL('current/chat-filter.js');
+        document.documentElement.appendChild(chatFilterScript);
+        chatFilterScript.onload = () => chatFilterScript.remove();
 
         // ── Startup toast ───────────────────────────────────────────────
 

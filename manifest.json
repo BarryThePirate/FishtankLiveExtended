@@ -39,5 +39,11 @@
       "id": "fishtank-live-extended@fishtank.live",
       "strict_min_version": "109.0"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["current/chat-filter.js"],
+      "matches": ["*://fishtank.live/*", "*://www.fishtank.live/*"]
+    }
+  ]
 }

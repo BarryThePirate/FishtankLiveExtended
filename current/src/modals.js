@@ -256,6 +256,9 @@ function buildSettingsContent(modal) {
             <button data-ftl-tab="logging" class="bg-gradient-to-r from-tertiary-500 to-tertiary-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
                 <div class="text-light-text bg-gradient-to-t from-tertiary-400 to-tertiary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Logging</div>
             </button>
+            <button data-ftl-tab="chat" class="bg-gradient-to-r from-purple-500 to-purple-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
+                <div class="text-light-text bg-gradient-to-t from-purple-400 to-purple-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Chat</div>
+            </button>
         </div>
 
         <!-- General tab -->
@@ -316,6 +319,11 @@ function buildSettingsContent(modal) {
             <div data-ftl-log-content class="relative flex flex-col w-full bg-dark rounded-sm shadow-md bg-gradient-to-r from-dark-500 via-dark-600 to-dark-600 border-2 border-dark-300/50 overflow-y-auto text-light-text" style="height: 500px; max-height: 50dvh; overflow-x: hidden; scrollbar-width: thin;">
                 <div class="text-sm text-center font-light italic p-5 m-auto opacity-75">Select a log type above</div>
             </div>
+        </div>
+
+        <!-- Chat tab -->
+        <div data-ftl-panel="chat" class="hidden">
+            ${toggleRow('Smart Anti-Spam Filtering', 'smartAntiSpam', getSetting('smartAntiSpam'), 'Removes spam, repeated messages, and flood copypastas from chat')}
         </div>
 
         <!-- Footer -->
@@ -380,6 +388,11 @@ function wireUpToggles(contentArea) {
             updateSetting(key, newVal);
             knob.classList.toggle('left-[0px]', newVal);
             knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
+
+            // Immediately notify page-level chat filter when anti-spam is toggled
+            if (key === 'smartAntiSpam') {
+                window.postMessage({ type: 'ftl-chat-filter-enabled', enabled: newVal }, '*');
+            }
         });
     });
 }
