@@ -11,7 +11,7 @@
  * - Timestamp on its own line at bottom right
  */
 
-import { player } from '../../ftl-ext-sdk/src/index.js';
+import { player, ui as sdkUi } from '../../ftl-ext-sdk/src/index.js';
 
 // ── Timestamp formatting ────────────────────────────────────────────
 
@@ -336,6 +336,24 @@ function playButton(audioUrl) {
     return btn;
 }
 
+function downloadButton(audioUrl, filename) {
+    const btn = document.createElement('button');
+    btn.className = 'opacity-40 hover:opacity-100 hover:text-primary-400 cursor-pointer transition-opacity ml-1';
+    btn.title = 'Download audio';
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
+
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+            await sdkUi.download.fromUrl(audioUrl, filename || 'audio.mp3', 'audio/mpeg');
+        } catch (err) {
+            console.warn('[FTL-Ext] Download failed:', err.message);
+        }
+    });
+
+    return btn;
+}
+
 // ── Log row builders ────────────────────────────────────────────────
 
 // -- TTS/SFX use their own compact layout (not chat-style) -----------
@@ -422,7 +440,12 @@ export function buildTtsRow(entry) {
     }
 
     const audioUrl = ttsAudioUrl(entry.audioId);
-    if (audioUrl) header.appendChild(playButton(audioUrl));
+    if (audioUrl) {
+        header.appendChild(playButton(audioUrl));
+        const safeName = (entry.displayName || 'tts').replace(/[^a-z0-9]/gi, '_');
+        const safeVoice = (entry.voice || 'voice').replace(/[^a-z0-9]/gi, '_');
+        header.appendChild(downloadButton(audioUrl, `tts-${safeVoice}-${safeName}.mp3`));
+    }
 
     header.appendChild(compactTimeSpan(entry.timestamp));
 
@@ -455,7 +478,11 @@ export function buildSfxRow(entry) {
     }
 
     const audioUrl = sfxAudioUrl(entry.audioFile);
-    if (audioUrl) header.appendChild(playButton(audioUrl));
+    if (audioUrl) {
+        header.appendChild(playButton(audioUrl));
+        const safeSound = (entry.message || 'sfx').replace(/[^a-z0-9]/gi, '_');
+        header.appendChild(downloadButton(audioUrl, `sfx-${safeSound}.mp3`));
+    }
 
     header.appendChild(compactTimeSpan(entry.timestamp));
 

@@ -16,7 +16,7 @@
  * - Socket.IO is an independent connection, no monkey-patching
  */
 
-import { site, ui, socket, player, chat } from '../../ftl-ext-sdk/src/index.js';
+import { site, ui, socket, player, chat, transport } from '../../ftl-ext-sdk/src/index.js';
 import { io } from 'socket.io-client';
 import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
@@ -33,6 +33,21 @@ const log = (...args) => DEBUG && console.log('[FTL Extended]', ...args);
 // ── Pre-ready setup (must not miss early events) ────────────────────
 
 loadSettings();
+
+// Register the SDK's cross-origin transport. The SDK calls this
+// whenever it needs to fetch something the page can't (e.g. audio
+// file downloads). We proxy through the background service worker
+// which runs with host_permissions and isn't bound by CORS.
+transport.register(async (url) => {
+    const response = await chrome.runtime.sendMessage({
+        type: 'ftl-sdk-fetch',
+        url,
+    });
+    if (!response?.ok) {
+        throw new Error(response?.error || 'Background fetch failed');
+    }
+    return new Uint8Array(response.data);
+});
 
 // Detect username via SDK polling (no body observer)
 let currentUsername = null;

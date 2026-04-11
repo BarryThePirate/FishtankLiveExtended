@@ -4,5 +4,7 @@ builds/
 barrythepirate.github.io/
 overrides/
 ftl-ext-sdk/
+ftl-ext-sdk.wiki/
 .idea/
 current/node_modules/
+todo.txt

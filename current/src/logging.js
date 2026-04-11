@@ -159,9 +159,14 @@ export function logTts(msg) {
 }
 
 export function logSfx(msg) {
-    // Deduplicate across tabs — use audioFile as unique key
-    const sfxKey = msg.audioFile || null;
-    if (sfxKey && sfxLog.some(e => e.audioFile === sfxKey)) return;
+    // Deduplicate across tabs — use audioFile + minute-bucket as unique key.
+    // audioFile alone collapses repeated preset sounds (same filename every
+    // time). The minute bucket lets the same preset be logged again on
+    // subsequent plays while still catching cross-tab duplicates.
+    const sfxKey = msg.audioFile
+        ? `${msg.audioFile}:${Math.floor(Date.now() / 60000)}`
+        : null;
+    if (sfxKey && sfxLog.some(e => e._dedupKey === sfxKey)) return;
 
     const entry = {
         displayName: msg.username || '???',
@@ -170,6 +175,7 @@ export function logSfx(msg) {
         audioFile: msg.audioFile || null,
         clan: msg.clanTag || null,
         timestamp: Date.now(),
+        _dedupKey: sfxKey,
     };
     pushEntry(sfxLog, entry, 'sfx');
     liveUpdate('sfx', buildSfxRow(entry));

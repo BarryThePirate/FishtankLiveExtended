@@ -60,17 +60,22 @@ if (fs.existsSync(classicDir)) {
     }
 }
 
-// current/ runtime files
+// current/bundle.js only
 if (fs.existsSync(path.join(ROOT, 'current', 'bundle.js'))) {
     files.push('current/bundle.js');
 } else {
     console.error('ERROR: current/bundle.js not found — run `npm run build` in current/ first');
     process.exit(1);
 }
+
+// current/chat-filter.js (page-level script, not bundled)
 if (fs.existsSync(path.join(ROOT, 'current', 'chat-filter.js'))) {
     files.push('current/chat-filter.js');
-} else {
-    console.warn('WARN: current/chat-filter.js not found, skipping');
+}
+
+// current/background.js (service worker for cross-origin downloads)
+if (fs.existsSync(path.join(ROOT, 'current', 'background.js'))) {
+    files.push('current/background.js');
 }
 
 // ── Display file list ───────────────────────────────────────────────

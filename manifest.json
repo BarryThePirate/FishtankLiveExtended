@@ -1,9 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Fishtank Live Extended",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "An open source project aimed at extending functionality on fishtank.live",
   "permissions": [],
+  "host_permissions": [
+    "https://cdn.fishtank.live/*"
+  ],
+  "background": {
+    "service_worker": "current/background.js"
+  },
   "icons": {
     "16": "icon.png",
     "48": "icon.png",

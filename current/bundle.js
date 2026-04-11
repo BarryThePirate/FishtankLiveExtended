@@ -5675,6 +5675,109 @@
     }
 
     /**
+     * core/transport.js — Cross-Origin Transport Layer
+     *
+     * The SDK needs to fetch cross-origin resources (e.g. audio files
+     * from cdn.fishtank.live) in contexts where the page's CORS policy
+     * would block a normal fetch(). Different host environments solve
+     * this differently:
+     *
+     *   - Browser extensions use a background service worker that runs
+     *     with host_permissions and can fetch any allowed origin.
+     *   - Userscripts (Tampermonkey/Greasemonkey) use GM_xmlhttpRequest,
+     *     which bypasses CORS entirely.
+     *   - Pages that happen to use the SDK can use normal fetch() if
+     *     the target sends appropriate CORS headers.
+     *
+     * Rather than baking any of these into the SDK, this module lets
+     * the consumer register a fetch function of their choosing. Any
+     * SDK feature that needs cross-origin access (such as ui.download)
+     * calls `transport.fetch(url)` and doesn't care how it's implemented.
+     *
+     * Usage — Extension (background service worker):
+     *
+     *   import { transport } from 'ftl-ext-sdk';
+     *
+     *   transport.register(async (url) => {
+     *     const response = await chrome.runtime.sendMessage({
+     *       type: 'ftl-sdk-fetch',
+     *       url,
+     *     });
+     *     if (!response?.ok) throw new Error(response?.error || 'Fetch failed');
+     *     return new Uint8Array(response.data);
+     *   });
+     *
+     * Usage — Userscript (GM_xmlhttpRequest):
+     *
+     *   transport.register((url) => new Promise((resolve, reject) => {
+     *     GM_xmlhttpRequest({
+     *       method: 'GET',
+     *       url,
+     *       responseType: 'arraybuffer',
+     *       onload: (res) => resolve(new Uint8Array(res.response)),
+     *       onerror: reject,
+     *     });
+     *   }));
+     *
+     * Usage — Plain page (target supports CORS):
+     *
+     *   transport.register(async (url) => {
+     *     const res = await fetch(url);
+     *     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+     *     return new Uint8Array(await res.arrayBuffer());
+     *   });
+     */
+
+    let _fetchFn = null;
+
+    /**
+     * Register a cross-origin fetch function.
+     *
+     * The function receives a URL string and must return a Promise
+     * resolving to a Uint8Array of the raw bytes. It should throw or
+     * reject on failure.
+     *
+     * Calling register() a second time replaces the previous function.
+     *
+     * @param {Function} fetchFn - async (url) => Uint8Array
+     */
+    function register$1(fetchFn) {
+        if (typeof fetchFn !== 'function') {
+            throw new Error('[ftl-ext-sdk] transport.register requires a function');
+        }
+        _fetchFn = fetchFn;
+    }
+
+    /**
+     * Fetch bytes from a URL using the registered transport.
+     *
+     * Throws if no transport has been registered, or if the transport
+     * throws/rejects.
+     *
+     * @param {string} url - Absolute URL to fetch
+     * @returns {Promise<Uint8Array>} Raw bytes
+     */
+    async function fetchBytes(url) {
+        if (!_fetchFn) {
+            throw new Error('[ftl-ext-sdk] No transport registered. Call transport.register(fn) first.');
+        }
+        const result = await _fetchFn(url);
+        if (!(result instanceof Uint8Array)) {
+            throw new Error('[ftl-ext-sdk] Transport function must return a Uint8Array');
+        }
+        return result;
+    }
+
+    /**
+     * Check whether a transport has been registered.
+     *
+     * @returns {boolean}
+     */
+    function isRegistered() {
+        return _fetchFn !== null;
+    }
+
+    /**
      * chat/messages.js — Chat Message Interception (Normalised)
      *
      * Listens for chat messages, TTS, and SFX events via the SDK's
@@ -6676,6 +6779,76 @@
           console.error('[ftl-ext-sdk] Toast observer callback error:', e);
         }
       }
+    }
+
+    /**
+     * ui/download.js — Browser Download Helpers
+     *
+     * Triggers a real file download in the user's browser. Uses an
+     * in-memory blob URL so the download attribute is honoured and
+     * custom filenames work regardless of the source URL's origin.
+     *
+     * `fromUrl` uses the SDK's transport layer (core/transport.js)
+     * to fetch cross-origin resources. The consumer must register
+     * a transport first — see core/transport.js for details.
+     */
+
+
+    /**
+     * Trigger a browser download for a chunk of bytes.
+     *
+     * Wraps the bytes in a Blob, creates a same-origin blob: URL,
+     * and programmatically clicks a hidden <a download> to trigger
+     * the save dialog. The blob URL is revoked after the click so
+     * we don't leak memory.
+     *
+     * @param {Uint8Array|ArrayBuffer|Blob} data - Bytes to download
+     * @param {string} filename - Suggested filename for the save dialog
+     * @param {string} [mimeType='application/octet-stream'] - MIME type for the blob
+     */
+    function saveBytes(data, filename, mimeType = 'application/octet-stream') {
+        let blob;
+        if (data instanceof Blob) {
+            blob = data;
+        } else if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
+            blob = new Blob([data], { type: mimeType });
+        } else {
+            throw new Error('[ftl-ext-sdk] download.saveBytes requires Uint8Array, ArrayBuffer, or Blob');
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Revoke after a short delay so the browser has time to start
+        // the download — revoking synchronously sometimes cancels it.
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    /**
+     * Download a file from a URL using the registered transport.
+     *
+     * Fetches the bytes via transport.fetchBytes (which bypasses CORS
+     * in extension/userscript contexts) and triggers a browser save
+     * dialog with the given filename.
+     *
+     * Throws if no transport is registered or if the fetch fails.
+     *
+     * @param {string} url - Absolute URL to download
+     * @param {string} filename - Suggested filename for the save dialog
+     * @param {string} [mimeType] - MIME type for the blob. Defaults to 'application/octet-stream'.
+     * @returns {Promise<void>}
+     */
+    async function fromUrl(url, filename, mimeType) {
+        if (!isRegistered()) {
+            throw new Error('[ftl-ext-sdk] download.fromUrl requires a transport. Call transport.register(fn) first.');
+        }
+        const bytes = await fetchBytes(url);
+        saveBytes(bytes, filename, mimeType);
     }
 
     const PACKET_TYPES = Object.create(null); // no Map = no polyfill
@@ -11999,6 +12172,24 @@
         return btn;
     }
 
+    function downloadButton(audioUrl, filename) {
+        const btn = document.createElement('button');
+        btn.className = 'opacity-40 hover:opacity-100 hover:text-primary-400 cursor-pointer transition-opacity ml-1';
+        btn.title = 'Download audio';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
+
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                await fromUrl(audioUrl, filename || 'audio.mp3', 'audio/mpeg');
+            } catch (err) {
+                console.warn('[FTL-Ext] Download failed:', err.message);
+            }
+        });
+
+        return btn;
+    }
+
     // ── Log row builders ────────────────────────────────────────────────
 
     // -- TTS/SFX use their own compact layout (not chat-style) -----------
@@ -12082,7 +12273,12 @@
         }
 
         const audioUrl = ttsAudioUrl(entry.audioId);
-        if (audioUrl) header.appendChild(playButton(audioUrl));
+        if (audioUrl) {
+            header.appendChild(playButton(audioUrl));
+            const safeName = (entry.displayName || 'tts').replace(/[^a-z0-9]/gi, '_');
+            const safeVoice = (entry.voice || 'voice').replace(/[^a-z0-9]/gi, '_');
+            header.appendChild(downloadButton(audioUrl, `tts-${safeVoice}-${safeName}.mp3`));
+        }
 
         header.appendChild(compactTimeSpan(entry.timestamp));
 
@@ -12115,7 +12311,11 @@
         }
 
         const audioUrl = sfxAudioUrl(entry.audioFile);
-        if (audioUrl) header.appendChild(playButton(audioUrl));
+        if (audioUrl) {
+            header.appendChild(playButton(audioUrl));
+            const safeSound = (entry.message || 'sfx').replace(/[^a-z0-9]/gi, '_');
+            header.appendChild(downloadButton(audioUrl, `sfx-${safeSound}.mp3`));
+        }
 
         header.appendChild(compactTimeSpan(entry.timestamp));
 
@@ -12433,9 +12633,14 @@
     }
 
     function logSfx(msg) {
-        // Deduplicate across tabs — use audioFile as unique key
-        const sfxKey = msg.audioFile || null;
-        if (sfxKey && sfxLog.some(e => e.audioFile === sfxKey)) return;
+        // Deduplicate across tabs — use audioFile + minute-bucket as unique key.
+        // audioFile alone collapses repeated preset sounds (same filename every
+        // time). The minute bucket lets the same preset be logged again on
+        // subsequent plays while still catching cross-tab duplicates.
+        const sfxKey = msg.audioFile
+            ? `${msg.audioFile}:${Math.floor(Date.now() / 60000)}`
+            : null;
+        if (sfxKey && sfxLog.some(e => e._dedupKey === sfxKey)) return;
 
         const entry = {
             displayName: msg.username || '???',
@@ -12444,6 +12649,7 @@
             audioFile: msg.audioFile || null,
             clan: msg.clanTag || null,
             timestamp: Date.now(),
+            _dedupKey: sfxKey,
         };
         pushEntry(sfxLog, entry, 'sfx');
         liveUpdate('sfx', buildSfxRow(entry));
@@ -14478,6 +14684,21 @@
 
     loadSettings();
 
+    // Register the SDK's cross-origin transport. The SDK calls this
+    // whenever it needs to fetch something the page can't (e.g. audio
+    // file downloads). We proxy through the background service worker
+    // which runs with host_permissions and isn't bound by CORS.
+    register$1(async (url) => {
+        const response = await chrome.runtime.sendMessage({
+            type: 'ftl-sdk-fetch',
+            url,
+        });
+        if (!response?.ok) {
+            throw new Error(response?.error || 'Background fetch failed');
+        }
+        return new Uint8Array(response.data);
+    });
+
     // Detect username via SDK polling (no body observer)
     let currentUsername = null;
     onUserDetected((username) => {
@@ -14825,7 +15046,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.2.0',
+            description: 'v2.2.1',
             type: 'success',
             duration: 3000,
         });
