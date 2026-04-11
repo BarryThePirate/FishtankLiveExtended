@@ -53,6 +53,11 @@
     // Auto-blocked flood messages: normalised text -> expiry timestamp
     const floodBlockList = new Map();
 
+    // IDs of messages already forwarded to the content script.
+    // Separate from `processedIds` (which tracks filter state) so that
+    // forwarding works even when all filters are off.
+    const forwardedIds = new Set();
+
     // ── Store finder ────────────────────────────────────────────────
     function findStore() {
         const el = document.querySelector('[data-react-window-index]');
@@ -336,6 +341,75 @@
         }
     }
 
+    // ── Forward new messages to content script ──────────────────────
+    // Runs on every store change regardless of filter state, so the
+    // content script gets messages even when filtering is disabled.
+    // Used as a backup capture path for messages the monitoring sockets
+    // miss. Content script dedupes by message ID against socket events.
+    function forwardNewMessages() {
+        if (!store) return;
+        const messages = store.getState().chatMessages;
+        if (!messages || messages.length === 0) return;
+
+        for (const msg of messages) {
+            if (!msg?.id || forwardedIds.has(msg.id)) continue;
+            forwardedIds.add(msg.id);
+
+            // Skip non-chat message types — TTS/SFX have their own
+            // dedicated socket events with audio data we can't get
+            // from the chat store
+            if (msg.user?.id && config.skipTypes.includes(msg.user.id)) continue;
+
+            // Build a minimal normalised shape matching what the SDK's
+            // chat.messages.onMessage produces. The content script's
+            // handler reads: username, message, role, colour, avatar,
+            // endorsement, mentions, chatRoom, raw.id
+            const meta = msg.metadata || {};
+            const role = meta.isAdmin ? 'staff'
+                : meta.isMod ? 'mod'
+                    : meta.isFish ? 'fish'
+                        : meta.isGrandMarshall ? 'grandMarshal'
+                            : meta.isEpic ? 'epic'
+                                : null;
+
+            const photoURL = msg.user?.photoURL || '';
+            const avatar = photoURL.split('/').pop() || null;
+
+            const rawMentions = msg.mentions || [];
+            const mentions = rawMentions.map(m => {
+                if (typeof m === 'string') return { displayName: m, userId: null };
+                return { displayName: m.displayName || '', userId: m.userId || null };
+            });
+
+            const normalised = {
+                username: msg.user?.displayName || '???',
+                message: msg.message || '',
+                role,
+                colour: msg.user?.customUsernameColor || null,
+                avatar,
+                clan: msg.user?.clan || null,
+                endorsement: msg.user?.endorsement || null,
+                mentions,
+                chatRoom: store.getState().chatRoom || 'Global',
+                raw: { id: msg.id },
+            };
+
+            window.postMessage({
+                type: 'ftl-chat-store-message',
+                message: normalised,
+            }, '*');
+        }
+
+        // Cap forwardedIds to prevent unbounded growth
+        if (forwardedIds.size > 2000) {
+            const idsArray = [...forwardedIds];
+            forwardedIds.clear();
+            for (let i = idsArray.length - 1000; i < idsArray.length; i++) {
+                forwardedIds.add(idsArray[i]);
+            }
+        }
+    }
+
     // ── Cleanup stale tracking data ─────────────────────────────────
     function cleanup() {
         const now = Date.now();
@@ -381,12 +455,14 @@
                 const current = store.getState().chatMessages.length;
                 if (current > lastLength) {
                     applyFilter();
+                    forwardNewMessages();
                 }
                 lastLength = store.getState().chatMessages.length;
             });
 
             // Apply once for existing messages
             applyFilter();
+            forwardNewMessages();
 
             // Periodic cleanup of stale tracking data
             setInterval(cleanup, 30000);

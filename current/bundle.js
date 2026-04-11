@@ -14838,9 +14838,17 @@
         });
 
         // ── Chat messages via SDK (normalised + structured) ────────────────
+        //
+        // Two parallel capture paths feed the same handler:
+        //   1. chat.messages.onMessage — Socket.IO, structured data, multi-room
+        //   2. window.postMessage from chat-filter.js — Zustand store, Global only
+        //
+        // The store path is a backup for messages the monitoring sockets miss.
+        // Dedup happens at the log layer via msg.raw.id, so duplicates are
+        // dropped automatically.
 
-        onMessage((msg) => {
-            log('[CHAT]', msg.username, msg.message);
+        function handleChatMessage(msg, source) {
+            log(`[CHAT/${source}]`, msg.username, msg.message);
 
             // Pings — chat messages that mention the current user
             if (currentUsername && msg.mentions.length > 0) {
@@ -14855,6 +14863,16 @@
             if (msg.role === 'staff' || msg.role === 'mod' || msg.role === 'fish') {
                 logRoleMessage(msg);
             }
+        }
+
+        onMessage((msg) => handleChatMessage(msg, 'socket'));
+
+        // Backup capture from chat-filter.js (page-realm Zustand store)
+        window.addEventListener('message', (e) => {
+            if (e.source !== window) return;
+            if (e.data?.type !== 'ftl-chat-store-message') return;
+            if (!e.data.message) return;
+            handleChatMessage(e.data.message, 'store');
         });
 
         // ── TTS via SDK (normalised + deduplicated) ─────────────────────
