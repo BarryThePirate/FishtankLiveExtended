@@ -4958,6 +4958,37 @@
     }, [socket_ioMsgpackParserExports$1]);
 
     /**
+     * core/debug.js — SDK Debug Logging
+     *
+     * Gates routine lifecycle logs (connects, disconnects, subscribes)
+     * behind an opt-in debug flag. Errors and warnings are NOT gated —
+     * they remain visible at all times.
+     *
+     * Usage (consumer):
+     *
+     *   import { debug } from 'ftl-ext-sdk';
+     *   debug.enable();   // turn on lifecycle logs
+     *   debug.disable();  // turn them off (default)
+     *
+     * Usage (inside the SDK):
+     *
+     *   import { debugLog } from './debug.js';
+     *   debugLog('Socket connected');
+     *
+     * debugLog is a no-op when debug is disabled. Equivalent to
+     * console.log with an '[ftl-ext-sdk]' prefix when enabled.
+     */
+
+
+    /**
+     * Internal logging helper. No-op when debug is disabled.
+     *
+     * @param {...any} args
+     */
+    function debugLog(...args) {
+    }
+
+    /**
      * core/socket.js — Socket.IO Connection
      *
      * Creates the SDK's own Socket.IO connection to the fishtank.live
@@ -5107,8 +5138,8 @@
             // server's default, which may be influenced by session state
             socket.emit('chat:room', ROOMS.GLOBAL);
 
-            console.log(
-                '[ftl-ext-sdk] Socket connected',
+            debugLog(
+                'Socket connected',
                 authenticated ? '(authenticated)' : '(anonymous)'
             );
 
@@ -5124,7 +5155,7 @@
           socket.on('disconnect', (reason) => {
             connected = false;
             authenticated = false;
-            console.log('[ftl-ext-sdk] Socket disconnected:', reason);
+            debugLog('Socket disconnected:', reason);
           });
 
           socket.on('connect_error', (err) => {
@@ -5200,7 +5231,6 @@
      */
     function forceReconnect() {
       if (!socket) return;
-      console.log('[ftl-ext-sdk] Forcing socket reconnect');
       socket.disconnect();
       // Socket.IO will automatically reconnect due to reconnection: true
       socket.connect();
@@ -5270,10 +5300,13 @@
       return _ioClient(SOCKET_URL, {
         parser: _msgpackParser,
         transports: ['websocket'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 30000,
+        // Auto-reconnect is disabled for room sockets. The consumer
+        // (chat/rooms.js or an extension) is responsible for detecting
+        // disconnect and manually re-subscribing when appropriate — this
+        // lets the consumer control ordering so that room socket
+        // reconnects don't clobber the user's "current room" on the
+        // backend by firing authenticated reconnects at unpredictable times.
+        reconnection: false,
         autoConnect: true,
         auth: { token: authToken || null },
       });
@@ -6151,7 +6184,10 @@
       // Already subscribed
       if (roomSockets.has(roomName)) return true;
 
-      const socket = createConnection({ token: null });
+      // Auto-detect auth token from cookie — Season Pass rooms require
+      // authentication, the server silently ignores room switches from
+      // anonymous connections
+      const socket = createConnection();
       if (!socket) {
         console.warn(`[ftl-ext-sdk] Cannot subscribe to "${roomName}" — primary socket not connected yet`);
         return false;
@@ -6176,22 +6212,16 @@
 
           // Wire up event listeners that dispatch through messages.js
           wireRoomListeners(socket, roomName);
-
-          console.log(`[ftl-ext-sdk] Subscribed to room: ${roomName}`);
           resolve(true);
         });
 
         socket.on('disconnect', (reason) => {
           entry.connected = false;
-          console.log(`[ftl-ext-sdk] Room "${roomName}" disconnected: ${reason}`);
         });
 
-        // Handle reconnection — re-emit chat:room after reconnect
-        socket.io.on('reconnect', () => {
-          entry.connected = true;
-          socket.emit('chat:room', roomName);
-          console.log(`[ftl-ext-sdk] Room "${roomName}" reconnected, re-subscribed`);
-        });
+        // Note: auto-reconnect is disabled on room sockets (see
+        // core/socket.js createConnection). Consumers must call
+        // chat.rooms.subscribe() again to re-establish a dead room socket.
 
         socket.on('connect_error', (err) => {
           if (!entry.connected) {
@@ -6202,6 +6232,15 @@
           }
         });
       });
+    }
+
+    /**
+     * Unsubscribe from all extra rooms.
+     */
+    function unsubscribeAll() {
+      for (const roomName of [...roomSockets.keys()]) {
+        cleanup(roomName);
+      }
     }
 
     // ── Internal ────────────────────────────────────────────────────────
@@ -6239,7 +6278,6 @@
       } catch {}
 
       roomSockets.delete(roomName);
-      console.log(`[ftl-ext-sdk] Unsubscribed from room: ${roomName}`);
     }
 
     /**
@@ -6581,10 +6619,10 @@
 
     /**
      * ui/toast-observer.js — Site Toast Observation
-     * 
+     *
      * The new site uses Sonner (https://sonner.emilkowal.dev/) for toast
      * notifications. Toasts are <li> elements with data-sonner-toast attribute.
-     * 
+     *
      * This module observes for new toasts appearing in the DOM and parses
      * their content — useful for logging admin messages, item notifications, etc.
      */
@@ -6596,7 +6634,7 @@
 
     /**
      * Parse a Sonner toast element into a structured object.
-     * 
+     *
      * Toast structure:
      * <li data-sonner-toast>
      *   <div data-content>
@@ -6611,7 +6649,7 @@
      *     </div>
      *   </div>
      * </li>
-     * 
+     *
      * @param {HTMLElement} toastElement - A [data-sonner-toast] element
      * @returns {Object|null} Parsed toast or null
      */
@@ -6619,25 +6657,25 @@
       if (!toastElement || !toastElement.hasAttribute('data-sonner-toast')) {
         return null;
       }
-      
+
       // Find the content paragraphs
       const paragraphs = toastElement.querySelectorAll('p');
       if (paragraphs.length === 0) return null;
-      
+
       const title = paragraphs[0]?.textContent?.trim() || null;
       const description = paragraphs.length > 1
-        ? paragraphs[1]?.textContent?.trim() || null
-        : null;
-      
+          ? paragraphs[1]?.textContent?.trim() || null
+          : null;
+
       // Check for an image (item notifications have one)
       const img = toastElement.querySelector('img');
       const imageUrl = img ? extractImageUrl(img) : null;
       const imageAlt = img?.getAttribute('alt') || null;
-      
+
       // Extract position info
       const yPosition = toastElement.getAttribute('data-y-position') || null;
       const xPosition = toastElement.getAttribute('data-x-position') || null;
-      
+
       return {
         title,
         description,
@@ -6654,7 +6692,7 @@
      */
     function extractImageUrl(imgElement) {
       const src = imgElement?.getAttribute('src') || '';
-      
+
       if (src.includes('/_next/image')) {
         try {
           const urlParam = new URL(src, window.location.origin).searchParams.get('url');
@@ -6664,13 +6702,13 @@
           return match ? decodeURIComponent(match[1]) : src;
         }
       }
-      
+
       return src || null;
     }
 
     /**
      * Register a callback for new site toast notifications.
-     * 
+     *
      * The callback receives a parsed toast object:
      * {
      *   title: string,           // e.g. "You found an item!"
@@ -6681,7 +6719,7 @@
      *   timestamp: number,       // When we observed it (Date.now())
      *   element: HTMLElement,    // Raw DOM element
      * }
-     * 
+     *
      * @param {Function} callback - Called with the parsed toast
      * @returns {Function} Unsubscribe function
      */
@@ -6692,37 +6730,37 @@
 
     /**
      * Start observing for site toast notifications.
-     * 
+     *
      * Targets the Sonner container element specifically, NOT document.body.
      * This is efficient because the container only mutates when toasts
      * are added or removed — it's completely isolated from chat and other
      * high-frequency DOM changes.
-     * 
+     *
      * @returns {boolean} True if observation started successfully
      */
     function startObserving() {
       if (disconnectObserver) return true;
-      
+
       const container = document.querySelector(SELECTORS.TOAST_CONTAINER);
       if (!container) {
         console.warn('[ftl-ext-sdk] Sonner toast container not found — cannot start observing');
         return false;
       }
-      
+
       // Process any existing toasts
       container.querySelectorAll('[data-sonner-toast]').forEach(processToast);
-      
+
       // Watch the Sonner container for new toast elements
       disconnectObserver = observe(container, (mutations) => {
         for (const mutation of mutations) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType !== 1) continue;
-            
+
             // Check if the added node is a toast
             if (node.hasAttribute?.('data-sonner-toast')) {
               processToast(node);
             }
-            
+
             // Check children (toast <li> inside a new <ol>)
             if (node.querySelectorAll) {
               node.querySelectorAll('[data-sonner-toast]').forEach(processToast);
@@ -6730,27 +6768,25 @@
           }
         }
       }, { childList: true, subtree: true });
-      
-      console.log('[ftl-ext-sdk] Toast observer started (targeting Sonner container)');
       return true;
     }
 
     /**
      * Wait for the Sonner toast container to appear, then start observing.
-     * 
+     *
      * The Sonner container appears a few seconds after page load.
      * This uses a short-lived body-level observer to find it, then
      * disconnects and switches to the targeted container observer.
-     * 
+     *
      * @param {number} timeout - Max wait time in ms (default 30000)
      * @returns {Promise<boolean>} True if observation started successfully
      */
     async function waitAndObserve(timeout = 30000) {
       if (disconnectObserver) return true;
-      
+
       // Try immediately first
       if (startObserving()) return true;
-      
+
       // Wait for the Sonner container to appear
       try {
         await waitForElement(SELECTORS.TOAST_CONTAINER, timeout);
@@ -6768,10 +6804,10 @@
       // Skip if already processed
       if (processedToasts.has(element)) return;
       processedToasts.add(element);
-      
+
       const parsed = parseToastElement(element);
       if (!parsed) return;
-      
+
       for (const cb of toastCallbacks) {
         try {
           cb(parsed);
@@ -13316,9 +13352,6 @@
         const btnContainer = chatHeader.querySelector('.flex.items-center.gap-0\\.5');
         if (!btnContainer) return;
 
-        // Allow buttons to wrap to a second row on narrower layouts
-        btnContainer.style.setProperty('flex-wrap', 'wrap', 'important');
-
         const wrapper = document.createElement('div');
         wrapper.className = 'relative translate-y-[2px]';
         wrapper.setAttribute('data-ftl-sdk', 'irc-btn');
@@ -14793,6 +14826,69 @@
             console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
         }
 
+        // ── Room setup and reconnect handling ───────────────────────────
+        //
+        // The backend tracks "current room" per user. Any authenticated
+        // socket that connects with a room subscription updates the user's
+        // current room on the server, which then gets pushed back to the
+        // site's own chat socket — causing the site's chat to switch rooms
+        // unexpectedly.
+        //
+        // To avoid this:
+        //   1. Room sockets have auto-reconnect disabled (see SDK).
+        //   2. On primary socket disconnect, we tear down all room sockets.
+        //   3. On primary reconnect, we wait 3 seconds for the site's own
+        //      socket to stabilise, then:
+        //        a. Emit chat:room: <snapshotted room> on our primary socket
+        //        b. Re-subscribe to each monitored room
+        //        c. After each subscription, re-emit chat:room: <snapshot>
+        //           again to reset the server's view of current room
+        //
+        // The snapshot comes from chat-filter.js which watches the store.
+
+        // Rooms we want to monitor — populated from the profile fetch.
+        let monitoredRooms = [];
+        // Generation counter — incremented on every disconnect. Used to
+        // cancel in-flight reconnect flows when a new disconnect happens
+        // before the previous restore completed.
+        let reconnectGeneration = 0;
+
+        async function reestablishRooms(generation) {
+            for (const room of monitoredRooms) {
+                // Bail if a newer disconnect has happened
+                if (generation !== reconnectGeneration) {
+                    return;
+                }
+                await subscribe(room);
+            }
+        }
+
+        {
+            const raw = getSocket();
+            if (raw) {
+                raw.on('disconnect', () => {
+                    reconnectGeneration++;
+
+                    // Tear down all room sockets. They can't auto-reconnect
+                    // any more (we disabled it), so we control re-establishment.
+                    unsubscribeAll();
+                    window.postMessage({ type: 'ftl-socket-disconnected' }, '*');
+                });
+                raw.on('connect', async () => {
+                    // Tell chat-filter.js we're back — it'll watch the
+                    // store for corruption and call changeChatRoom to fix
+                    // it immediately if it happens.
+                    window.postMessage({ type: 'ftl-socket-reconnected' }, '*');
+
+                    // Re-subscribe to monitored rooms. chat-filter is
+                    // already watching and will correct any room flip
+                    // this triggers.
+                    const myGeneration = reconnectGeneration;
+                    await reestablishRooms(myGeneration);
+                });
+            }
+        }
+
         // ── Season Pass room auto-detection ─────────────────────────────
         // Wait for the user's auth cookie to appear, extract their UUID,
         // fetch their profile to check Season Pass status, then subscribe
@@ -14812,28 +14908,41 @@
                         seasonPassXL: !!profile.seasonPassXL,
                     });
 
-                    // Subscribe to extra rooms, then re-emit Global on the
-                    // primary socket so the server remembers Global as the
-                    // last room — this ensures the site defaults to Global
-                    // on the next page refresh.
-                    let subscribed = false;
-
+                    // Build the list of rooms we want to monitor
+                    monitoredRooms = [];
                     if (profile.seasonPass && getSetting('monitorSeasonPass')) {
-                        const ok = await subscribe('Season Pass');
-                        if (ok) { subscribed = true; }
+                        monitoredRooms.push('Season Pass');
                     }
                     if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
-                        const ok = await subscribe('Season Pass XL');
-                        if (ok) { subscribed = true; }
+                        monitoredRooms.push('Season Pass XL');
                     }
 
-                    if (subscribed) {
+                    // Initial subscription — uses the same flow as reconnect
+                    const subscribed = ['Global'];
+                    for (const room of monitoredRooms) {
+                        const ok = await subscribe(room);
+                        if (ok) {
+                            subscribed.push(room);
+                        }
+                    }
+
+                    // One-time startup announcement — always visible so
+                    // users can confirm the extension is running and see
+                    // which rooms are being monitored. Lifecycle churn
+                    // on reconnects stays gated behind DEBUG.
+                    console.log(`[FTL Extended] Ready — monitoring ${subscribed.join(', ')}`);
+
+                    // After initial subscription, reset the server's view
+                    // of current room back to Global so the site defaults
+                    // correctly on refresh.
+                    if (monitoredRooms.length > 0) {
                         const raw = getSocket();
                         if (raw) raw.emit('chat:room', 'Global');
                     }
                 })
                 .catch(err => {
                     log('Profile fetch failed:', err.message);
+                    console.log('[FTL Extended] Ready — monitoring Global (profile fetch failed, Season Pass rooms unavailable)');
                 });
         });
 

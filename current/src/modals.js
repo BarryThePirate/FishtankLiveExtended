@@ -273,9 +273,6 @@ export function tryInjectIrcButton() {
     const btnContainer = chatHeader.querySelector('.flex.items-center.gap-0\\.5');
     if (!btnContainer) return;
 
-    // Allow buttons to wrap to a second row on narrower layouts
-    btnContainer.style.setProperty('flex-wrap', 'wrap', 'important');
-
     const wrapper = document.createElement('div');
     wrapper.className = 'relative translate-y-[2px]';
     wrapper.setAttribute('data-ftl-sdk', 'irc-btn');

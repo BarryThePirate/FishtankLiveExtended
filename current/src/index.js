@@ -16,7 +16,7 @@
  * - Socket.IO is an independent connection, no monkey-patching
  */
 
-import { site, ui, socket, player, chat, transport } from '../../ftl-ext-sdk/src/index.js';
+import { site, ui, socket, player, chat, transport, debug } from '../../ftl-ext-sdk/src/index.js';
 import { io } from 'socket.io-client';
 import * as msgpackParser from 'socket.io-msgpack-parser';
 import { loadSettings, getSetting } from './settings.js';
@@ -28,6 +28,11 @@ import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreB
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
 
 const DEBUG = false;
+
+// Mirror the DEBUG flag into the SDK so its lifecycle logs
+// (connect, disconnect, subscribe, etc.) match the extension's
+// verbosity. When DEBUG is false both go quiet.
+if (DEBUG) debug.enable();
 const log = (...args) => DEBUG && console.log('[FTL Extended]', ...args);
 
 // ── Pre-ready setup (must not miss early events) ────────────────────
@@ -145,6 +150,71 @@ site.whenReady(async () => {
         console.warn('[FTL Extended] Chat/TTS/SFX logging will not work this session');
     }
 
+    // ── Room setup and reconnect handling ───────────────────────────
+    //
+    // The backend tracks "current room" per user. Any authenticated
+    // socket that connects with a room subscription updates the user's
+    // current room on the server, which then gets pushed back to the
+    // site's own chat socket — causing the site's chat to switch rooms
+    // unexpectedly.
+    //
+    // To avoid this:
+    //   1. Room sockets have auto-reconnect disabled (see SDK).
+    //   2. On primary socket disconnect, we tear down all room sockets.
+    //   3. On primary reconnect, we wait 3 seconds for the site's own
+    //      socket to stabilise, then:
+    //        a. Emit chat:room: <snapshotted room> on our primary socket
+    //        b. Re-subscribe to each monitored room
+    //        c. After each subscription, re-emit chat:room: <snapshot>
+    //           again to reset the server's view of current room
+    //
+    // The snapshot comes from chat-filter.js which watches the store.
+
+    // Rooms we want to monitor — populated from the profile fetch.
+    let monitoredRooms = [];
+    // Generation counter — incremented on every disconnect. Used to
+    // cancel in-flight reconnect flows when a new disconnect happens
+    // before the previous restore completed.
+    let reconnectGeneration = 0;
+
+    async function reestablishRooms(generation) {
+        for (const room of monitoredRooms) {
+            // Bail if a newer disconnect has happened
+            if (generation !== reconnectGeneration) {
+                log('Reconnect flow cancelled mid-flight, bailing out');
+                return;
+            }
+            const ok = await chat.rooms.subscribe(room);
+            if (ok) log('Re-subscribed to room:', room);
+        }
+    }
+
+    {
+        const raw = socket.getSocket();
+        if (raw) {
+            raw.on('disconnect', () => {
+                reconnectGeneration++;
+
+                // Tear down all room sockets. They can't auto-reconnect
+                // any more (we disabled it), so we control re-establishment.
+                chat.rooms.unsubscribeAll();
+                window.postMessage({ type: 'ftl-socket-disconnected' }, '*');
+            });
+            raw.on('connect', async () => {
+                // Tell chat-filter.js we're back — it'll watch the
+                // store for corruption and call changeChatRoom to fix
+                // it immediately if it happens.
+                window.postMessage({ type: 'ftl-socket-reconnected' }, '*');
+
+                // Re-subscribe to monitored rooms. chat-filter is
+                // already watching and will correct any room flip
+                // this triggers.
+                const myGeneration = reconnectGeneration;
+                await reestablishRooms(myGeneration);
+            });
+        }
+    }
+
     // ── Season Pass room auto-detection ─────────────────────────────
     // Wait for the user's auth cookie to appear, extract their UUID,
     // fetch their profile to check Season Pass status, then subscribe
@@ -165,28 +235,42 @@ site.whenReady(async () => {
                     seasonPassXL: !!profile.seasonPassXL,
                 });
 
-                // Subscribe to extra rooms, then re-emit Global on the
-                // primary socket so the server remembers Global as the
-                // last room — this ensures the site defaults to Global
-                // on the next page refresh.
-                let subscribed = false;
-
+                // Build the list of rooms we want to monitor
+                monitoredRooms = [];
                 if (profile.seasonPass && getSetting('monitorSeasonPass')) {
-                    const ok = await chat.rooms.subscribe('Season Pass');
-                    if (ok) { log('Subscribed to Season Pass'); subscribed = true; }
+                    monitoredRooms.push('Season Pass');
                 }
                 if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
-                    const ok = await chat.rooms.subscribe('Season Pass XL');
-                    if (ok) { log('Subscribed to Season Pass XL'); subscribed = true; }
+                    monitoredRooms.push('Season Pass XL');
                 }
 
-                if (subscribed) {
+                // Initial subscription — uses the same flow as reconnect
+                const subscribed = ['Global'];
+                for (const room of monitoredRooms) {
+                    const ok = await chat.rooms.subscribe(room);
+                    if (ok) {
+                        subscribed.push(room);
+                        log('Subscribed to room:', room);
+                    }
+                }
+
+                // One-time startup announcement — always visible so
+                // users can confirm the extension is running and see
+                // which rooms are being monitored. Lifecycle churn
+                // on reconnects stays gated behind DEBUG.
+                console.log(`[FTL Extended] Ready — monitoring ${subscribed.join(', ')}`);
+
+                // After initial subscription, reset the server's view
+                // of current room back to Global so the site defaults
+                // correctly on refresh.
+                if (monitoredRooms.length > 0) {
                     const raw = socket.getSocket();
                     if (raw) raw.emit('chat:room', 'Global');
                 }
             })
             .catch(err => {
                 log('Profile fetch failed:', err.message);
+                console.log('[FTL Extended] Ready — monitoring Global (profile fetch failed, Season Pass rooms unavailable)');
             });
     });
 

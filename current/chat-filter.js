@@ -88,6 +88,36 @@
         return null;
     }
 
+    // ── Room snapshot state ─────────────────────────────────────────
+    // Tracks the user's "real" selected room so we can restore it
+    // after a reconnect. Without this, the backend's notion of
+    // "current room" gets clobbered when room sockets reconnect and
+    // re-emit their own rooms.
+    let roomSnapshot = 'Global';
+    let roomFrozen = false;
+    let snapshotMatchUnfreezer = null;
+
+    // Call the site's own changeChatRoom action on the Zustand store.
+    // This triggers exactly the same logic as the user clicking a
+    // room in the site's room picker: it fetches messages, updates
+    // the store, emits on the site's own socket, and settles backend
+    // state correctly. No DOM clicks or modal flashing.
+    function changeChatRoom(room) {
+        if (!store) return false;
+        try {
+            const state = store.getState();
+            if (typeof state.changeChatRoom === 'function') {
+                state.changeChatRoom(room);
+                return true;
+            }
+            if (DEBUG) console.warn(LOG_PREFIX, 'changeChatRoom action not found on store');
+            return false;
+        } catch (err) {
+            if (DEBUG) console.warn(LOG_PREFIX, 'changeChatRoom failed:', err);
+            return false;
+        }
+    }
+
     // ── Receive settings from content script ────────────────────────
     window.addEventListener('message', (e) => {
         if (e.data?.type === 'ftl-chat-filter-userid' && e.data.userId && !currentUserId) {
@@ -102,6 +132,26 @@
                 if (DEBUG) console.log(LOG_PREFIX, 'Settings updated:', settings);
                 applyFilter();
             }
+        }
+        // Primary socket disconnected — freeze the snapshot so
+        // store updates from incoming room sockets don't overwrite
+        // the user's actual selection during the reconnect window.
+        if (e.data?.type === 'ftl-socket-disconnected') {
+            roomFrozen = true;
+            if (DEBUG) console.log(LOG_PREFIX, 'Socket disconnected, room snapshot frozen at:', roomSnapshot);
+        }
+        // Primary socket reconnected — unfreeze after a short window.
+        // During the freeze, if the store's chatRoom flips to anything
+        // other than the snapshot, we call changeChatRoom immediately
+        // to restore it (handled in the store subscribe below).
+        if (e.data?.type === 'ftl-socket-reconnected') {
+            if (DEBUG) console.log(LOG_PREFIX, 'Socket reconnected, watching for corruption');
+            if (snapshotMatchUnfreezer) clearTimeout(snapshotMatchUnfreezer);
+            snapshotMatchUnfreezer = setTimeout(() => {
+                roomFrozen = false;
+                snapshotMatchUnfreezer = null;
+                if (DEBUG) console.log(LOG_PREFIX, 'Room snapshot unfrozen');
+            }, 5000);
         }
     });
 
@@ -446,7 +496,7 @@
         if (store) {
             clearInterval(findInterval);
 
-            console.log(LOG_PREFIX, 'Store found, chat filtering ready');
+            if (DEBUG) console.log(LOG_PREFIX, 'Store found, chat filtering ready');
             if (settings.smartAntiSpam) console.log(LOG_PREFIX, 'Smart anti-spam active');
             lastLength = store.getState().chatMessages.length;
 
@@ -458,7 +508,29 @@
                     forwardNewMessages();
                 }
                 lastLength = store.getState().chatMessages.length;
+
+                // Room tracking:
+                //   - If the store changes and we're not frozen, the
+                //     user moved rooms — update the snapshot.
+                //   - If the store changes while we're frozen and the
+                //     new room doesn't match the snapshot, that's the
+                //     post-reconnect corruption. Call changeChatRoom
+                //     immediately to snap back to the user's room.
+                const currentRoom = store.getState().chatRoom || 'Global';
+                if (currentRoom !== roomSnapshot) {
+                    if (roomFrozen) {
+                        if (DEBUG) console.log(LOG_PREFIX, `Corrective action: store flipped to ${currentRoom}, calling changeChatRoom('${roomSnapshot}')`);
+                        changeChatRoom(roomSnapshot);
+                    } else {
+                        roomSnapshot = currentRoom;
+                        if (DEBUG) console.log(LOG_PREFIX, 'Room snapshot updated:', roomSnapshot);
+                    }
+                }
             });
+
+            // Initialise snapshot from current state
+            roomSnapshot = store.getState().chatRoom || 'Global';
+            if (DEBUG) console.log(LOG_PREFIX, 'Initial room snapshot:', roomSnapshot);
 
             // Apply once for existing messages
             applyFilter();
