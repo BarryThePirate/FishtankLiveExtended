@@ -167,11 +167,21 @@ export function initCraftingHints() {
                 isUpdating = false;
             }
 
-            updateHints();
+            // Delay initial run by a microtask — when opening the
+            // craft modal via "Craft" on an inventory item, the
+            // pre-selected item name is populated after the item row
+            // first renders, so reading synchronously here would miss it.
+            Promise.resolve().then(updateHints);
 
-            // Watch the item row (targeted, NOT body) for selection changes
+            // Watch the item row for selection changes. We include
+            // characterData because the pre-selected item name is
+            // sometimes written into an existing text node (not a
+            // new child), which wouldn't fire a childList mutation.
+            // This was causing the hints to miss the pre-selected
+            // item when opening the craft modal from "Craft" on an
+            // inventory item.
             const craftObserver = new MutationObserver(updateHints);
-            craftObserver.observe(itemRow, { childList: true, subtree: true });
+            craftObserver.observe(itemRow, { childList: true, subtree: true, characterData: true });
             document.addEventListener('modalClose', () => craftObserver.disconnect(), { once: true });
         });
 

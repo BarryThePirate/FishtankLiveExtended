@@ -10,6 +10,7 @@
  */
 
 import { getSetting, updateSetting } from './settings.js';
+import { enableArchiveGridSaver, disableArchiveGridSaver } from './archive-grid.js';
 import { toggleRow, logPill } from './ui-helpers.js';
 import { renderRecipeResults } from './crafting.js';
 import {
@@ -197,17 +198,30 @@ export function toggleIrcMode() {
 
     const panel = document.querySelector('.fixed.bottom-0.right-0');
     const parent = panel?.closest('.relative');
-
     if (!panel || !parent) return;
+
+    // The chat box is the panel child that contains #chat-input. The site
+    // used to put a floorplan/house-map element above it (panel.children[0]),
+    // but that's gone — the chat box is now the first child. Locate it by
+    // #chat-input rather than a fixed index so this survives layout shuffles.
+    const chatInput = panel.querySelector('#chat-input');
+    const chatBox = chatInput
+        ? [...panel.children].find(c => c.contains(chatInput))
+        : panel.children[0];
+    if (!chatBox) return;
+
+    // Any legacy map containers that might still exist — hidden only if present.
+    const mapAbove = [...panel.children].find(c => c !== chatBox && !c.contains(chatInput));
+    const mapInChat = panel.querySelector('.shrink-0.mt-2.pb-2');
 
     if (ircActive) {
         // Save original inline styles
         ircSavedPanelStyle = panel.style.cssText;
-        ircSavedChild1Style = panel.children[1]?.style.cssText || '';
+        ircSavedChild1Style = chatBox.style.cssText || '';
 
-        // Hide both map containers (one above panel, one inside chat)
-        panel.children[0].style.setProperty('display', 'none', 'important');
-        panel.querySelector('.shrink-0.mt-2.pb-2')?.style.setProperty('display', 'none', 'important');
+        // Hide any leftover map containers (no-op if they don't exist)
+        mapAbove?.style.setProperty('display', 'none', 'important');
+        mapInChat?.style.setProperty('display', 'none', 'important');
 
         // Expand chat panel to fill viewport
         panel.style.setProperty('left', '0', 'important');
@@ -218,18 +232,18 @@ export function toggleIrcMode() {
         panel.style.setProperty('transform', 'none', 'important');
 
         // Make chat box fill the panel
-        panel.children[1].style.setProperty('height', '100%', 'important');
+        chatBox.style.setProperty('height', '100%', 'important');
 
         // Bring parent stacking context above everything
         parent.style.setProperty('z-index', '9999', 'important');
     } else {
         // Restore map containers
-        panel.children[0].style.removeProperty('display');
-        panel.querySelector('.shrink-0.mt-2.pb-2')?.style.removeProperty('display');
+        mapAbove?.style.removeProperty('display');
+        mapInChat?.style.removeProperty('display');
 
         // Restore original styles
         panel.style.cssText = ircSavedPanelStyle || '';
-        panel.children[1].style.cssText = ircSavedChild1Style || '';
+        chatBox.style.cssText = ircSavedChild1Style || '';
 
         // If theatre mode is active, keep z-index high enough to stay above backdrop
         if (document.body.classList.contains('ftl-theatre-mode')) {
@@ -380,6 +394,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
             ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
+            ${toggleRow('Archive Grid Saver', 'archiveGridSaver', getSetting('archiveGridSaver'), 'Stops the archive grid downloading every camera at once — click a tile to play it')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
         </div>
@@ -437,8 +452,10 @@ function buildSettingsContent(modal) {
             ${toggleRow('Hide TTS Messages', 'hideTTSMessages', getSetting('hideTTSMessages'), 'Remove TTS messages from the chat feed')}
             ${toggleRow('Hide SFX Messages', 'hideSFXMessages', getSetting('hideSFXMessages'), 'Remove SFX messages from the chat feed')}
             ${toggleRow('Hide StoX Messages', 'hideStoxMessages', getSetting('hideStoxMessages'), 'Remove StoX portfolio messages from the chat feed')}
-            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
-            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
+            ${''/* Season Pass monitoring disabled (broken) — toggles hidden for all users:
+            userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''
+            */}
+            ${''/* userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : '' */}
 
             <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
                 <div class="text-sm font-medium mb-1 opacity-75">Word / Phrase Filters</div>
@@ -523,6 +540,12 @@ function wireUpToggles(contentArea) {
             updateSetting(key, newVal);
             knob.classList.toggle('left-[0px]', newVal);
             knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
+
+            // Live-apply the archive grid saver without requiring a reload
+            if (key === 'archiveGridSaver') {
+                if (newVal) enableArchiveGridSaver();
+                else disableArchiveGridSaver();
+            }
 
             // Immediately notify page-level chat filter when any chat setting changes
             if (chatFilterKeys.includes(key)) {

@@ -11,9 +11,13 @@ const DEFAULTS = {
     enhancedTheatreMode: true,
     enableInventorySearch: true,
     enablePingIndicator: true,
-    monitorSeasonPass: true,
-    monitorSeasonPassXL: true,
+    // Season Pass monitoring disabled — these don't work reliably and
+    // cause problems, so the settings are turned off and hidden for all
+    // users. Left commented rather than deleted in case they're revived.
+    // monitorSeasonPass: true,
+    // monitorSeasonPassXL: true,
     videoStutterImprover: true,
+    archiveGridSaver: true,
     smartAntiSpam: false,
     hideTTSMessages: false,
     hideSFXMessages: false,

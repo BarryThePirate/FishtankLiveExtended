@@ -6738,7 +6738,7 @@
      *
      * @returns {boolean} True if observation started successfully
      */
-    function startObserving() {
+    function startObserving$1() {
       if (disconnectObserver) return true;
 
       const container = document.querySelector(SELECTORS.TOAST_CONTAINER);
@@ -6785,12 +6785,12 @@
       if (disconnectObserver) return true;
 
       // Try immediately first
-      if (startObserving()) return true;
+      if (startObserving$1()) return true;
 
       // Wait for the Sonner container to appear
       try {
         await waitForElement(SELECTORS.TOAST_CONTAINER, timeout);
-        return startObserving();
+        return startObserving$1();
       } catch {
         console.warn('[ftl-ext-sdk] Toast container did not appear within', timeout, 'ms');
         return false;
@@ -11835,9 +11835,13 @@
         enhancedTheatreMode: true,
         enableInventorySearch: true,
         enablePingIndicator: true,
-        monitorSeasonPass: true,
-        monitorSeasonPassXL: true,
+        // Season Pass monitoring disabled — these don't work reliably and
+        // cause problems, so the settings are turned off and hidden for all
+        // users. Left commented rather than deleted in case they're revived.
+        // monitorSeasonPass: true,
+        // monitorSeasonPassXL: true,
         videoStutterImprover: true,
+        archiveGridSaver: true,
         smartAntiSpam: false,
         hideTTSMessages: false,
         hideSFXMessages: false,
@@ -12966,11 +12970,21 @@
                     isUpdating = false;
                 }
 
-                updateHints();
+                // Delay initial run by a microtask — when opening the
+                // craft modal via "Craft" on an inventory item, the
+                // pre-selected item name is populated after the item row
+                // first renders, so reading synchronously here would miss it.
+                Promise.resolve().then(updateHints);
 
-                // Watch the item row (targeted, NOT body) for selection changes
+                // Watch the item row for selection changes. We include
+                // characterData because the pre-selected item name is
+                // sometimes written into an existing text node (not a
+                // new child), which wouldn't fire a childList mutation.
+                // This was causing the hints to miss the pre-selected
+                // item when opening the craft modal from "Craft" on an
+                // inventory item.
                 const craftObserver = new MutationObserver(updateHints);
-                craftObserver.observe(itemRow, { childList: true, subtree: true });
+                craftObserver.observe(itemRow, { childList: true, subtree: true, characterData: true });
                 document.addEventListener('modalClose', () => craftObserver.disconnect(), { once: true });
             });
 
@@ -13086,6 +13100,269 @@
     }
 
     /**
+     * archive-grid.js — Archive Grid Bandwidth Saver
+     *
+     * PROBLEM
+     * -------
+     * The home page renders a grid of ~10 camera tiles, each a full
+     * progressive MP4 (150MB–1GB) with preload="auto". preload="auto"
+     * makes the browser fetch the ENTIRE file regardless of play/pause
+     * state, so all ten download at once — gigabytes of concurrent
+     * traffic. Pausing does nothing (the download isn't driven by
+     * playback) and setting preload="none" after the fact doesn't abort
+     * an in-flight fetch; React also re-asserts preload="auto" on every
+     * render.
+     *
+     * APPROACH (Plan A — posters only)
+     * --------------------------------
+     * The only reliable way to stop a progressive download is to remove
+     * the source. For each grid tile we stash its src in a data attribute,
+     * remove the src attribute, and call load() to abort any active fetch.
+     * The poster remains, so the grid still shows thumbnails. Clicking a
+     * tile is left entirely native: the site promotes that one <video> to
+     * the fullscreen slot and plays it there — which we leave untouched.
+     *
+     * WHY AN OBSERVER (matches zones.js)
+     * ----------------------------------
+     * React re-adds src on re-render, the thumbnail refresh swaps tiles,
+     * and the grid toggles visible/invisible on click. A one-shot pass
+     * loses to all three. We observe the persistent page wrapper (never
+     * document.body) and re-strip on every mutation, exactly like
+     * zones.js watches the player container. A short bounded poll bridges
+     * the gap before the wrapper exists on first load, then clears itself.
+     *
+     * GRID vs FULLSCREEN
+     * ------------------
+     * When a tile is clicked the site moves that <video> into a fixed,
+     * full-width slot and switches it from object-cover to object-contain.
+     * We must NOT strip that one. Distinguisher: a tile we should kill is
+     * an archive-host <video> with object-cover that is NOT inside the
+     * promoted fullscreen button. We treat object-contain (or living in
+     * the fixed fullscreen wrapper) as "leave alone".
+     */
+
+
+    // Archive CDN hosts. A <video> pointing here is a camera tile.
+    // (The live HLS player uses a different host and is never touched.)
+    const ARCHIVE_HOST_RE = /(?:fishtank-archives|fishtank-cameras)\.b-cdn\.net/i;
+
+    // Data attributes for our bookkeeping.
+    const STASH_ATTR = 'data-ftl-grid-src';      // where we park the removed src
+    const MARK_ATTR = 'data-ftl-grid-stripped';  // marks a tile we've neutralised
+
+    let active$1 = false;
+    let observer = null;
+    let anchor = null;
+    let pollTimer = null;
+
+    /**
+     * Is this <video> an archive camera source?
+     */
+    function isArchiveVideo(video) {
+        const src = video.getAttribute('src') || video.getAttribute(STASH_ATTR) || '';
+        return ARCHIVE_HOST_RE.test(src);
+    }
+
+    /**
+     * Should this tile be left playing? True for the promoted fullscreen
+     * video. The site switches the clicked tile to object-contain and
+     * relocates it into a fixed full-width button; grid tiles stay
+     * object-cover. Either signal means "leave alone".
+     */
+    function isPromotedFullscreen(video) {
+        if (video.classList.contains('object-contain')) return true;
+        // The fullscreen button is position:fixed and spans most of the
+        // viewport; grid tile buttons are not fixed.
+        const btn = video.closest('button');
+        if (btn && btn.classList.contains('fixed')) return true;
+        return false;
+    }
+
+    /**
+     * Neutralise one grid tile: stash its src, remove it, abort the fetch.
+     */
+    function stripVideo(video) {
+        // Leave the promoted/fullscreen video alone, and restore its src
+        // if we'd previously stripped it (e.g. it just got promoted). When
+        // promoting we also resume playback, since we'd called load() which
+        // leaves it paused and the site's own play() fired before restore.
+        if (isPromotedFullscreen(video)) {
+            restoreVideo(video, { resume: true });
+            return;
+        }
+
+        const liveSrc = video.getAttribute('src');
+        if (liveSrc) {
+            // Park the current src so we can restore on disable / promotion.
+            video.setAttribute(STASH_ATTR, liveSrc);
+            video.removeAttribute('src');
+            video.setAttribute(MARK_ATTR, '1');
+            try {
+                video.preload = 'none';
+                video.load(); // abort any in-flight progressive download
+            } catch {}
+        } else if (!video.hasAttribute(MARK_ATTR) && video.hasAttribute(STASH_ATTR)) {
+            // Already stripped earlier and React hasn't re-added src — keep marked.
+            video.setAttribute(MARK_ATTR, '1');
+        }
+    }
+
+    /**
+     * Restore a tile's src. Used on teardown, or when a tile is promoted to
+     * fullscreen so the site can play it.
+     *
+     * With { resume: true } we also restore preload, call load() to pick up
+     * the re-added src, and play() — because stripping left the element
+     * paused with no source, and the site's click-time play() already fired
+     * and failed before we restored.
+     */
+    function restoreVideo(video, { resume = false } = {}) {
+        const stashed = video.getAttribute(STASH_ATTR);
+        const needsSrc = stashed && !video.getAttribute('src');
+        if (needsSrc) {
+            video.setAttribute('src', stashed);
+        }
+        video.removeAttribute(STASH_ATTR);
+        video.removeAttribute(MARK_ATTR);
+
+        if (resume && stashed) {
+            try {
+                video.preload = 'auto';
+                video.load();
+                const p = video.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch {}
+        }
+    }
+
+    /**
+     * Scan the anchor for archive videos and strip every grid tile.
+     */
+    function scan() {
+        if (!active$1 || !anchor || !observer) return;
+
+        // Pause our own observer while we mutate tile attributes. Stripping
+        // sets/removes src + preload, which would otherwise re-fire this
+        // callback in a churn loop — and that churn lands right when the site
+        // is rendering the "next camera" countdown placeholder tiles,
+        // disturbing them. Disconnect, mutate, then reconnect.
+        observer.disconnect();
+        try {
+            const videos = anchor.querySelectorAll('video');
+            for (const v of videos) {
+                if (isArchiveVideo(v)) stripVideo(v);
+            }
+        } finally {
+            observer.observe(anchor, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['src', 'class'],
+            });
+        }
+    }
+
+    /**
+     * Find the persistent page wrapper the grid renders inside.
+     * The home page content lives under <div class="pb-10 ..."> which is
+     * present from load and survives the grid re-rendering. We use it as
+     * the observer target (never document.body).
+     */
+    function findAnchor() {
+        // Prefer the wrapper that actually contains an archive video.
+        const anyTile = [...document.querySelectorAll('video')]
+            .find(v => ARCHIVE_HOST_RE.test(v.getAttribute('src') || v.getAttribute(STASH_ATTR) || ''));
+        if (anyTile) {
+            // Walk up to the pb-10 wrapper if present, else the grid's parent.
+            const wrapper = anyTile.closest('div.pb-10') || anyTile.closest('div.grid')?.parentElement;
+            if (wrapper) return wrapper;
+        }
+        // Fall back to the pb-10 wrapper even before tiles exist.
+        return document.querySelector('div.pb-10');
+    }
+
+    /**
+     * Attach the observer to the anchor. Returns true if attached.
+     */
+    function startObserving() {
+        const found = findAnchor();
+        if (!found) return false;
+
+        // Re-attach if the anchor changed (React replaced the subtree).
+        if (observer && anchor === found) return true;
+        if (observer) observer.disconnect();
+
+        anchor = found;
+        observer = new MutationObserver(() => scan());
+        observer.observe(anchor, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['src', 'class'],
+        });
+
+        // Initial pass for tiles already present. (scan() pauses/resumes the
+        // observer itself, so it must already be connected here.)
+        scan();
+        return true;
+    }
+
+    // ── Public API ──────────────────────────────────────────────────────
+
+    /**
+     * Enable the saver: attach the observer (or bridge with a short poll
+     * until the wrapper exists) and strip current tiles.
+     */
+    function enableArchiveGridSaver() {
+        if (active$1) return;
+        active$1 = true;
+
+        if (!startObserving()) {
+            // Wrapper not in the DOM yet on first load — bounded poll,
+            // same pattern as zones.js. Clears itself once attached.
+            let attempts = 0;
+            pollTimer = setInterval(() => {
+                attempts++;
+                if (startObserving() || attempts > 40 || !active$1) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            }, 250);
+        }
+    }
+
+    /**
+     * Disable the saver and restore every stripped tile to stock behaviour.
+     */
+    function disableArchiveGridSaver() {
+        if (!active$1) return;
+        active$1 = false;
+
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+        }
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        anchor = null;
+
+        // Restore any tiles we stripped.
+        document.querySelectorAll(`video[${STASH_ATTR}]`).forEach(v => restoreVideo(v));
+    }
+
+    /**
+     * Wire the saver to its setting. Called once from index.js pre-ready so
+     * the observer is in place before the grid finishes rendering.
+     */
+    function initArchiveGridSaver() {
+        if (getSetting('archiveGridSaver')) {
+            enableArchiveGridSaver();
+        }
+    }
+
+    /**
      * modals.js — Modal builders and helpers
      *
      * Contains the FTL Extended settings modal (the big tabbed panel),
@@ -13099,14 +13376,12 @@
 
     let currentUsername$1 = null;
     let activeModalName = null;
-    let userPasses = { seasonPass: false, seasonPassXL: false };
 
     function setCurrentUsername(name) {
         currentUsername$1 = name;
     }
 
     function setUserPasses(passes) {
-        userPasses = passes;
     }
 
     function setActiveModal(name) {
@@ -13276,17 +13551,30 @@
 
         const panel = document.querySelector('.fixed.bottom-0.right-0');
         const parent = panel?.closest('.relative');
-
         if (!panel || !parent) return;
+
+        // The chat box is the panel child that contains #chat-input. The site
+        // used to put a floorplan/house-map element above it (panel.children[0]),
+        // but that's gone — the chat box is now the first child. Locate it by
+        // #chat-input rather than a fixed index so this survives layout shuffles.
+        const chatInput = panel.querySelector('#chat-input');
+        const chatBox = chatInput
+            ? [...panel.children].find(c => c.contains(chatInput))
+            : panel.children[0];
+        if (!chatBox) return;
+
+        // Any legacy map containers that might still exist — hidden only if present.
+        const mapAbove = [...panel.children].find(c => c !== chatBox && !c.contains(chatInput));
+        const mapInChat = panel.querySelector('.shrink-0.mt-2.pb-2');
 
         if (ircActive) {
             // Save original inline styles
             ircSavedPanelStyle = panel.style.cssText;
-            ircSavedChild1Style = panel.children[1]?.style.cssText || '';
+            ircSavedChild1Style = chatBox.style.cssText || '';
 
-            // Hide both map containers (one above panel, one inside chat)
-            panel.children[0].style.setProperty('display', 'none', 'important');
-            panel.querySelector('.shrink-0.mt-2.pb-2')?.style.setProperty('display', 'none', 'important');
+            // Hide any leftover map containers (no-op if they don't exist)
+            mapAbove?.style.setProperty('display', 'none', 'important');
+            mapInChat?.style.setProperty('display', 'none', 'important');
 
             // Expand chat panel to fill viewport
             panel.style.setProperty('left', '0', 'important');
@@ -13297,18 +13585,18 @@
             panel.style.setProperty('transform', 'none', 'important');
 
             // Make chat box fill the panel
-            panel.children[1].style.setProperty('height', '100%', 'important');
+            chatBox.style.setProperty('height', '100%', 'important');
 
             // Bring parent stacking context above everything
             parent.style.setProperty('z-index', '9999', 'important');
         } else {
             // Restore map containers
-            panel.children[0].style.removeProperty('display');
-            panel.querySelector('.shrink-0.mt-2.pb-2')?.style.removeProperty('display');
+            mapAbove?.style.removeProperty('display');
+            mapInChat?.style.removeProperty('display');
 
             // Restore original styles
             panel.style.cssText = ircSavedPanelStyle || '';
-            panel.children[1].style.cssText = ircSavedChild1Style || '';
+            chatBox.style.cssText = ircSavedChild1Style || '';
 
             // If theatre mode is active, keep z-index high enough to stay above backdrop
             if (document.body.classList.contains('ftl-theatre-mode')) {
@@ -13459,6 +13747,7 @@
             ${toggleRow('Reveal Hidden Clickable Zones', 'revealHiddenZones', getSetting('revealHiddenZones'), 'Highlights secret zones on the video player')}
             ${toggleRow('Enhanced Theatre Mode', 'enhancedTheatreMode', getSetting('enhancedTheatreMode'), 'Replaces site theatre mode (T)')}
             ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
+            ${toggleRow('Archive Grid Saver', 'archiveGridSaver', getSetting('archiveGridSaver'), 'Stops the archive grid downloading every camera at once — click a tile to play it')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
         </div>
@@ -13516,8 +13805,10 @@
             ${toggleRow('Hide TTS Messages', 'hideTTSMessages', getSetting('hideTTSMessages'), 'Remove TTS messages from the chat feed')}
             ${toggleRow('Hide SFX Messages', 'hideSFXMessages', getSetting('hideSFXMessages'), 'Remove SFX messages from the chat feed')}
             ${toggleRow('Hide StoX Messages', 'hideStoxMessages', getSetting('hideStoxMessages'), 'Remove StoX portfolio messages from the chat feed')}
-            ${userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''}
-            ${userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : ''}
+            ${''/* Season Pass monitoring disabled (broken) — toggles hidden for all users:
+            userPasses.seasonPass ? toggleRow('Monitor Season Pass Chat', 'monitorSeasonPass', getSetting('monitorSeasonPass'), 'Log messages and pings from Season Pass room') : ''
+            */}
+            ${''/* userPasses.seasonPassXL ? toggleRow('Monitor Season Pass XL Chat', 'monitorSeasonPassXL', getSetting('monitorSeasonPassXL'), 'Log messages and pings from Season Pass XL room') : '' */}
 
             <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
                 <div class="text-sm font-medium mb-1 opacity-75">Word / Phrase Filters</div>
@@ -13602,6 +13893,12 @@
                 updateSetting(key, newVal);
                 knob.classList.toggle('left-[0px]', newVal);
                 knob.classList.toggle('left-[calc(100%-16px)]', !newVal);
+
+                // Live-apply the archive grid saver without requiring a reload
+                if (key === 'archiveGridSaver') {
+                    if (newVal) enableArchiveGridSaver();
+                    else disableArchiveGridSaver();
+                }
 
                 // Immediately notify page-level chat filter when any chat setting changes
                 if (chatFilterKeys.includes(key)) {
@@ -14520,22 +14817,27 @@
 
     // ── Shared: create a search input and wire up filtering ─────────────
 
-    function createSearchInput(placeholder, items, container, insertAfter) {
+    function createSearchInput(placeholder, items, container, insertAfter, trailing) {
         const wrapper = document.createElement('div');
         wrapper.setAttribute('data-ftl-sdk', 'item-search');
         wrapper.className = 'px-1 pb-1';
 
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 mt-2 mb-1';
+
         const input = document.createElement('input');
         input.type = 'text';
         input.placeholder = placeholder;
-        input.className = 'font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-1';
+        input.className = 'font-regular text-md leading-none flex-1 min-w-0 h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25';
 
         // Prevent keyboard shortcuts from firing while typing
         input.addEventListener('keydown', (e) => {
             e.stopPropagation();
         });
 
-        wrapper.appendChild(input);
+        row.appendChild(input);
+        if (trailing) row.appendChild(trailing);
+        wrapper.appendChild(row);
         insertAfter.insertAdjacentElement('afterend', wrapper);
 
         input.addEventListener('input', () => {
@@ -14566,6 +14868,23 @@
 
     // ── Inventory popup (floating-ui-portal) ────────────────────────────
 
+    function buildSlotCounter(grid) {
+        const counter = document.createElement('span');
+        counter.setAttribute('data-ftl-sdk', 'slot-counter');
+        counter.className = 'font-regular text-md leading-none opacity-60 tabular-nums text-right min-w-[3.5rem] shrink-0';
+
+        const update = () => {
+            const options = grid.querySelectorAll('[role="option"]');
+            const used = Array.from(options).filter(o => o.querySelector('img')).length;
+            counter.textContent = `${used}/${options.length}`;
+        };
+        update();
+
+        const observer = new MutationObserver(update);
+        observer.observe(grid, { childList: true, subtree: true });
+        return { counter, observer };
+    }
+
     function tryInjectInventorySearch() {
         if (inventoryInjected) return;
         if (!getSetting('enableInventorySearch')) return;
@@ -14589,13 +14908,15 @@
             }
 
             const items = grid.querySelectorAll('[role="option"]');
-            createSearchInput('Search inventory...', items, grid, header);
+            const { counter, observer: slotCounterObserver } = buildSlotCounter(grid);
+            createSearchInput('Search inventory...', items, grid, header, counter);
             inventoryInjected = true;
 
             // Clean up when inventory closes
             const closeObserver = new MutationObserver(() => {
                 if (!portal.contains(dialog)) {
                     closeObserver.disconnect();
+                    if (slotCounterObserver) slotCounterObserver.disconnect();
                     inventoryInjected = false;
                 }
             });
@@ -14716,6 +15037,27 @@
     // ── Pre-ready setup (must not miss early events) ────────────────────
 
     loadSettings();
+
+    // Archive grid saver must install its play() patch BEFORE any grid tile
+    // renders and calls play(), so it runs here in pre-ready, not whenReady.
+    // The patch is a harmless prototype swap that no-ops while disabled.
+    initArchiveGridSaver();
+
+
+
+    document.addEventListener('modalOpen', (e) => {
+        let detail;
+        try {
+            detail = e.detail ? JSON.parse(JSON.stringify(e.detail)) : {};
+        } catch { detail = {}; }
+        console.log('[Modal]', detail?.modal || 'unknown', detail);
+        setTimeout(() => {
+            const modalEl = document.getElementById('modal');
+            console.log('[Modal HTML]', modalEl?.innerHTML || '(no #modal element)');
+        }, 200);
+    });
+
+
 
     // Register the SDK's cross-origin transport. The SDK calls this
     // whenever it needs to fetch something the page can't (e.g. audio
@@ -14910,12 +15252,14 @@
 
                     // Build the list of rooms we want to monitor
                     monitoredRooms = [];
-                    if (profile.seasonPass && getSetting('monitorSeasonPass')) {
-                        monitoredRooms.push('Season Pass');
-                    }
-                    if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
-                        monitoredRooms.push('Season Pass XL');
-                    }
+                    // Season Pass monitoring disabled (broken) — never add these
+                    // rooms so the settings are effectively off for all users.
+                    // if (profile.seasonPass && getSetting('monitorSeasonPass')) {
+                    //     monitoredRooms.push('Season Pass');
+                    // }
+                    // if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
+                    //     monitoredRooms.push('Season Pass XL');
+                    // }
 
                     // Initial subscription — uses the same flow as reconnect
                     const subscribed = ['Global'];
@@ -15173,7 +15517,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.2.1',
+            description: 'v2.2.3',
             type: 'success',
             duration: 3000,
         });

@@ -26,6 +26,7 @@ import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingBut
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
+import { initArchiveGridSaver } from './archive-grid.js';
 
 const DEBUG = false;
 
@@ -38,6 +39,27 @@ const log = (...args) => DEBUG && console.log('[FTL Extended]', ...args);
 // ── Pre-ready setup (must not miss early events) ────────────────────
 
 loadSettings();
+
+// Archive grid saver must install its play() patch BEFORE any grid tile
+// renders and calls play(), so it runs here in pre-ready, not whenReady.
+// The patch is a harmless prototype swap that no-ops while disabled.
+initArchiveGridSaver();
+
+
+
+document.addEventListener('modalOpen', (e) => {
+    let detail;
+    try {
+        detail = e.detail ? JSON.parse(JSON.stringify(e.detail)) : {};
+    } catch { detail = {}; }
+    console.log('[Modal]', detail?.modal || 'unknown', detail);
+    setTimeout(() => {
+        const modalEl = document.getElementById('modal');
+        console.log('[Modal HTML]', modalEl?.innerHTML || '(no #modal element)');
+    }, 200);
+});
+
+
 
 // Register the SDK's cross-origin transport. The SDK calls this
 // whenever it needs to fetch something the page can't (e.g. audio
@@ -237,12 +259,14 @@ site.whenReady(async () => {
 
                 // Build the list of rooms we want to monitor
                 monitoredRooms = [];
-                if (profile.seasonPass && getSetting('monitorSeasonPass')) {
-                    monitoredRooms.push('Season Pass');
-                }
-                if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
-                    monitoredRooms.push('Season Pass XL');
-                }
+                // Season Pass monitoring disabled (broken) — never add these
+                // rooms so the settings are effectively off for all users.
+                // if (profile.seasonPass && getSetting('monitorSeasonPass')) {
+                //     monitoredRooms.push('Season Pass');
+                // }
+                // if (profile.seasonPassXL && getSetting('monitorSeasonPassXL')) {
+                //     monitoredRooms.push('Season Pass XL');
+                // }
 
                 // Initial subscription — uses the same flow as reconnect
                 const subscribed = ['Global'];

@@ -17,22 +17,27 @@ let inventoryInjected = false;
 
 // ── Shared: create a search input and wire up filtering ─────────────
 
-function createSearchInput(placeholder, items, container, insertAfter) {
+function createSearchInput(placeholder, items, container, insertAfter, trailing) {
     const wrapper = document.createElement('div');
     wrapper.setAttribute('data-ftl-sdk', 'item-search');
     wrapper.className = 'px-1 pb-1';
 
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 mt-2 mb-1';
+
     const input = document.createElement('input');
     input.type = 'text';
     input.placeholder = placeholder;
-    input.className = 'font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-1';
+    input.className = 'font-regular text-md leading-none flex-1 min-w-0 h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25';
 
     // Prevent keyboard shortcuts from firing while typing
     input.addEventListener('keydown', (e) => {
         e.stopPropagation();
     });
 
-    wrapper.appendChild(input);
+    row.appendChild(input);
+    if (trailing) row.appendChild(trailing);
+    wrapper.appendChild(row);
     insertAfter.insertAdjacentElement('afterend', wrapper);
 
     input.addEventListener('input', () => {
@@ -63,6 +68,23 @@ function createSearchInput(placeholder, items, container, insertAfter) {
 
 // ── Inventory popup (floating-ui-portal) ────────────────────────────
 
+function buildSlotCounter(grid) {
+    const counter = document.createElement('span');
+    counter.setAttribute('data-ftl-sdk', 'slot-counter');
+    counter.className = 'font-regular text-md leading-none opacity-60 tabular-nums text-right min-w-[3.5rem] shrink-0';
+
+    const update = () => {
+        const options = grid.querySelectorAll('[role="option"]');
+        const used = Array.from(options).filter(o => o.querySelector('img')).length;
+        counter.textContent = `${used}/${options.length}`;
+    };
+    update();
+
+    const observer = new MutationObserver(update);
+    observer.observe(grid, { childList: true, subtree: true });
+    return { counter, observer };
+}
+
 export function tryInjectInventorySearch() {
     if (inventoryInjected) return;
     if (!getSetting('enableInventorySearch')) return;
@@ -86,13 +108,15 @@ export function tryInjectInventorySearch() {
         }
 
         const items = grid.querySelectorAll('[role="option"]');
-        createSearchInput('Search inventory...', items, grid, header);
+        const { counter, observer: slotCounterObserver } = buildSlotCounter(grid);
+        createSearchInput('Search inventory...', items, grid, header, counter);
         inventoryInjected = true;
 
         // Clean up when inventory closes
         const closeObserver = new MutationObserver(() => {
             if (!portal.contains(dialog)) {
                 closeObserver.disconnect();
+                if (slotCounterObserver) slotCounterObserver.disconnect();
                 inventoryInjected = false;
             }
         });
