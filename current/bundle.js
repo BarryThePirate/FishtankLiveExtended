@@ -18206,20 +18206,6 @@
 
 
 
-    document.addEventListener('modalOpen', (e) => {
-        let detail;
-        try {
-            detail = e.detail ? JSON.parse(JSON.stringify(e.detail)) : {};
-        } catch { detail = {}; }
-        console.log('[Modal]', detail?.modal || 'unknown', detail);
-        setTimeout(() => {
-            const modalEl = document.getElementById('modal');
-            console.log('[Modal HTML]', modalEl?.innerHTML || '(no #modal element)');
-        }, 200);
-    });
-
-
-
     // Register the SDK's cross-origin transport. The SDK calls this
     // whenever it needs to fetch something the page can't (e.g. audio
     // file downloads). We proxy through the background service worker
