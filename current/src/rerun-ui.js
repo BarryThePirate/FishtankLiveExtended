@@ -31,7 +31,7 @@ import {
     isPaused, pause, resume, nudge, isPastSeasonEnd, getRoomStateAt, getChunkUrl,
     formatClock,
 } from './rerun.js';
-import { initZones, setZonesRoom, handleZonesEscape } from './rerun-zones.js';
+import { initZones, setZonesRoom, handleZonesEscape, updateZoneStatuses } from './rerun-zones.js';
 import {
     isTheatreActive, exitTheatre, toggleTheatre,
     siteIconButton, siteTextButton, THEATRE_ICON_SVG, EXPAND_ICON_SVG,
@@ -168,6 +168,7 @@ function injectStyles() {
             #${OVERLAY_ID} .ftl-rerun-cell { aspect-ratio: auto; }
         }
         #${OVERLAY_ID} .ftl-rerun-tile-status.on-air { color: #4ade80; }
+        #${OVERLAY_ID} .ftl-rerun-zone-status.on-air { color: #4ade80; }
         #${OVERLAY_ID} .ftl-rerun-tile.ftl-rerun-on-air .ftl-rerun-tile-noise { display: none; }
         /* Live thumbnail: shown once loaded; hides the centred status */
         #${OVERLAY_ID} .ftl-rerun-tile-thumb { display: none; }
@@ -701,6 +702,7 @@ function renderClocks() {
     }
     renderTileCountdowns();
     renderPlayerCountdown();
+    updateZoneStatuses();
 }
 
 // ── Grid ────────────────────────────────────────────────────────────
@@ -810,6 +812,20 @@ function refreshTileThumbs() {
         const url = archives.thumbnailUrl(state.chunk.fileName, (now - startMs) / 1000);
         if (url && img.getAttribute('src') !== url) img.src = url;
     }
+}
+
+/**
+ * Status line for a zone's hover label — same logic as the grid tiles.
+ */
+function zoneStatusText(room) {
+    const state = tileStates.get(room);
+    const now = virtualNow();
+    if (!state || state.status === 'unknown' || now == null) return '';
+    const onAir = state.status === 'on-air' && (state.nominalEndMs == null || now < state.nominalEndMs);
+    if (onAir) return '● On Air';
+    return state.nextStartsAtMs != null && state.nextStartsAtMs > now
+        ? `No Signal — ${formatCountdown(state.nextStartsAtMs - now)}`
+        : 'No Signal';
 }
 
 function renderTileCountdowns() {
@@ -952,8 +968,11 @@ function buildPlayer() {
     playerEl.addEventListener('pointerdown', wake);
     wake();
 
-    // Clickable door zones — clicking a doorway switches rooms
-    initZones(playerEl, videoEl, (room) => focusRoom(room));
+    // Clickable door zones — clicking a doorway switches rooms; hover
+    // labels carry the same on-air/countdown status as the grid tiles
+    initZones(playerEl, videoEl, (room) => focusRoom(room), {
+        getRoomStatus: zoneStatusText,
+    });
 }
 
 // Speaker icons matching the site's player (muted / low / medium / high).

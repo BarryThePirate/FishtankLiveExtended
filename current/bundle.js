@@ -15000,6 +15000,7 @@
     let draftPoints = [];
     let getSeason = () => getSetting('rerunSeason');
     let getRooms = getSeasonRooms;
+    let getRoomStatus = null;
 
     /**
      * Bind the zones module to a player. Call from the player builder —
@@ -15017,6 +15018,9 @@
      * @param {HTMLElement} [opts.buttonMount] - where to put the Zones
      *   editor button when the player has no .ftl-rerun-player-bar (used
      *   when riding the site's own archive player)
+     * @param {Function} [opts.getRoomStatus] - (roomCode) => display string
+     *   ("● On Air" / "No Signal — 0:38" / '') for the hover label's
+     *   status line; omit to hide the status line
      */
     function initZones(player, video, navigate, opts = {}) {
         playerEl$1 = player;
@@ -15024,6 +15028,7 @@
         onNavigate = navigate;
         getSeason = opts.getSeason || (() => getSetting('rerunSeason'));
         getRooms = opts.getRooms || getSeasonRooms;
+        getRoomStatus = opts.getRoomStatus || null;
         editing = false;
         draftPoints = [];
         videoEl$1?.addEventListener('loadedmetadata', layoutZones);
@@ -15127,10 +15132,17 @@
             const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
             const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
             const label = document.createElement('div');
-            label.className = 'text-light-text text-lg font-bold leading-none whitespace-nowrap bg-dark rounded-md px-2 py-1';
+            label.className = 'text-light-text bg-dark rounded-md px-2 py-1 flex flex-col items-center gap-1';
             label.style.cssText = `position:absolute;left:${cx.toFixed(2)}%;top:${cy.toFixed(2)}%;`
                 + 'transform:translate(-50%,-50%);opacity:0;transition:opacity 0.2s ease;';
-            label.textContent = formatRoomLabel(zone.target);
+            const name = document.createElement('div');
+            name.className = 'text-lg font-bold leading-none whitespace-nowrap';
+            name.textContent = formatRoomLabel(zone.target);
+            const status = document.createElement('div');
+            status.className = 'ftl-rerun-zone-status font-secondary uppercase tabular-nums text-light-text/50 text-xs leading-none whitespace-nowrap';
+            status.dataset.room = zone.target;
+            status.style.display = 'none';
+            label.append(name, status);
 
             const group = document.createElementNS(SVG_NS, 'g');
             group.style.cssText = 'pointer-events:all;cursor:pointer;';
@@ -15168,6 +15180,23 @@
         if (editing) buildDrawSurface(wrapper);
         playerEl$1.appendChild(wrapper);
         layoutZones();
+        updateZoneStatuses();
+    }
+
+    /**
+     * Refresh the status line under each zone label ("● On Air" or a No
+     * Signal countdown, matching the grid tiles). Called by the host on
+     * its 1s clock tick; no-ops when the host didn't supply a status
+     * source (e.g. the site's own player).
+     */
+    function updateZoneStatuses() {
+        if (!getRoomStatus || !playerEl$1) return;
+        for (const el of playerEl$1.querySelectorAll('.ftl-rerun-zone-status')) {
+            const text = getRoomStatus(el.dataset.room) || '';
+            if (el.textContent !== text) el.textContent = text;
+            el.style.display = text ? '' : 'none';
+            el.classList.toggle('on-air', text.startsWith('●'));
+        }
     }
 
     // ── Zone editor ─────────────────────────────────────────────────────
@@ -15659,6 +15688,7 @@
             #${OVERLAY_ID} .ftl-rerun-cell { aspect-ratio: auto; }
         }
         #${OVERLAY_ID} .ftl-rerun-tile-status.on-air { color: #4ade80; }
+        #${OVERLAY_ID} .ftl-rerun-zone-status.on-air { color: #4ade80; }
         #${OVERLAY_ID} .ftl-rerun-tile.ftl-rerun-on-air .ftl-rerun-tile-noise { display: none; }
         /* Live thumbnail: shown once loaded; hides the centred status */
         #${OVERLAY_ID} .ftl-rerun-tile-thumb { display: none; }
@@ -16186,6 +16216,7 @@
         }
         renderTileCountdowns();
         renderPlayerCountdown();
+        updateZoneStatuses();
     }
 
     // ── Grid ────────────────────────────────────────────────────────────
@@ -16295,6 +16326,20 @@
             const url = thumbnailUrl(state.chunk.fileName, (now - startMs) / 1000);
             if (url && img.getAttribute('src') !== url) img.src = url;
         }
+    }
+
+    /**
+     * Status line for a zone's hover label — same logic as the grid tiles.
+     */
+    function zoneStatusText(room) {
+        const state = tileStates.get(room);
+        const now = virtualNow();
+        if (!state || state.status === 'unknown' || now == null) return '';
+        const onAir = state.status === 'on-air' && (state.nominalEndMs == null || now < state.nominalEndMs);
+        if (onAir) return '● On Air';
+        return state.nextStartsAtMs != null && state.nextStartsAtMs > now
+            ? `No Signal — ${formatCountdown(state.nextStartsAtMs - now)}`
+            : 'No Signal';
     }
 
     function renderTileCountdowns() {
@@ -16437,8 +16482,11 @@
         playerEl.addEventListener('pointerdown', wake);
         wake();
 
-        // Clickable door zones — clicking a doorway switches rooms
-        initZones(playerEl, videoEl, (room) => focusRoom(room));
+        // Clickable door zones — clicking a doorway switches rooms; hover
+        // labels carry the same on-air/countdown status as the grid tiles
+        initZones(playerEl, videoEl, (room) => focusRoom(room), {
+            getRoomStatus: zoneStatusText,
+        });
     }
 
     // Speaker icons matching the site's player (muted / low / medium / high).
@@ -18690,7 +18738,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.3.0',
+            description: 'v2.3.1',
             type: 'success',
             duration: 3000,
         });
