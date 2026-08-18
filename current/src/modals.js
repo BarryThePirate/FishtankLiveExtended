@@ -18,6 +18,14 @@ import {
     addFilterTerm, removeFilterTerm, resetUnreadPings,
 } from './logging.js';
 import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
+import { archives } from '../../ftl-ext-sdk/src/index.js';
+import {
+    loadSeasonData, getSeasonDays, dayTimeToVirtualMs, setAnchor, clearAnchor,
+    virtualNow, virtualMsToDayNumber, isRerunActive, isPaused, formatClock,
+    changeSeason, AVAILABLE_SEASONS,
+} from './rerun.js';
+import { openRerunOverlay, closeRerunOverlay } from './rerun-ui.js';
+import { refreshZones } from './rerun-zones.js';
 
 let currentUsername = null;
 let activeModalName = null;
@@ -385,6 +393,9 @@ function buildSettingsContent(modal) {
             <button data-ftl-tab="chat" class="bg-gradient-to-r from-purple-500 to-purple-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
                 <div class="text-light-text bg-gradient-to-t from-purple-400 to-purple-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Chat</div>
             </button>
+            <button data-ftl-tab="rerun" class="bg-gradient-to-r from-secondary-500 to-secondary-600/75 h-[32px] p-0.5 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary w-full brightness-75" type="button">
+                <div class="text-light-text bg-gradient-to-t from-secondary-400 to-secondary-500 text-shadow-md border-light/25 text-md p-1 flex justify-center items-center h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none">Re-run</div>
+            </button>
         </div>
 
         <!-- General tab -->
@@ -475,6 +486,55 @@ function buildSettingsContent(modal) {
             </div>
         </div>
 
+        <!-- Re-run tab -->
+        <div data-ftl-panel="rerun" class="hidden">
+            <style>
+                /* Native time-picker icon renders black; invert it for the dark theme */
+                [data-ftl-rerun-time]::-webkit-calendar-picker-indicator {
+                    filter: invert(1);
+                    opacity: 0.75;
+                    cursor: pointer;
+                }
+            </style>
+            ${toggleRow('Enable Re-run Mode', 'rerunEnabled', getSetting('rerunEnabled'), 'Replay the season archive as if it were live')}
+            ${toggleRow('Clock Runs While Away', 'rerunTickWhileAway', getSetting('rerunTickWhileAway'), 'On: time passes even while you’re off the site, like live TV. Off: the clock only ticks while you’re here')}
+            ${toggleRow('Clickable Room Zones', 'rerunClickableZones', getSetting('rerunClickableZones'), 'Click doorways in the video to move between rooms')}
+            ${toggleRow('12-Hour Clock', 'rerunClock12h', getSetting('rerunClock12h'), 'Show the re-run clock as AM/PM instead of 24-hour')}
+
+            <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
+                <div class="text-sm font-medium mb-1 opacity-75">Start Point</div>
+                <div class="text-xs opacity-40 mb-2">Pick a season, day, and time (show time, US Eastern). The re-run plays forward from there in real time.</div>
+                <select data-ftl-rerun-season class="font-regular text-md leading-none w-full h-[32px] p-1 mb-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
+                    ${AVAILABLE_SEASONS.map(s =>
+        `<option class="bg-dark text-light-text" value="${s.value}" ${getSetting('rerunSeason') === s.value ? 'selected' : ''}>${s.label}</option>`
+    ).join('')}
+                </select>
+                <div class="flex gap-1 items-center">
+                    <select data-ftl-rerun-day class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
+                        <option class="bg-dark text-light-text">Loading days…</option>
+                    </select>
+                    <input data-ftl-rerun-time type="time" value="18:00" class="font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <button data-ftl-rerun-start class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Start</div>
+                    </button>
+                </div>
+                <div data-ftl-rerun-status class="text-xs opacity-60 mt-2"></div>
+                <div class="flex gap-2 items-center mt-2">
+                    <button data-ftl-rerun-open class="bg-gradient-to-r from-secondary-500 to-secondary-600/75 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Open Re-run Player</div>
+                    </button>
+                    <button data-ftl-rerun-clear class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Clear Re-run</div>
+                    </button>
+                    <div data-ftl-rerun-clear-confirm class="hidden flex items-center gap-2 text-xs">
+                        <span class="opacity-75">Sure?</span>
+                        <button data-ftl-rerun-clear-yes class="cursor-pointer text-red-400 hover:opacity-100 font-bold" type="button">Yes</button>
+                        <button data-ftl-rerun-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer -->
         <div class="mt-4 pt-3 border-t-1 border-dark-400/50 text-xs font-secondary opacity-60 text-center">
             <div class="flex gap-1 font-bold justify-center flex-wrap">
@@ -493,6 +553,7 @@ function buildSettingsContent(modal) {
     wireUpCraftingSearch(contentArea);
     wireUpLogging(contentArea);
     wireUpWordFilters(contentArea);
+    wireUpRerun(contentArea);
     wireUpTipLink(contentArea);
 }
 
@@ -545,6 +606,16 @@ function wireUpToggles(contentArea) {
             if (key === 'archiveGridSaver') {
                 if (newVal) enableArchiveGridSaver();
                 else disableArchiveGridSaver();
+            }
+
+            // Disabling re-run mode closes its player immediately
+            if (key === 'rerunEnabled' && !newVal) {
+                closeRerunOverlay();
+            }
+
+            // Live-apply zone visibility in an open player
+            if (key === 'rerunClickableZones') {
+                refreshZones();
             }
 
             // Immediately notify page-level chat filter when any chat setting changes
@@ -800,6 +871,108 @@ function wireUpWordFilters(contentArea) {
     // Wire up initial remove buttons
     tagsContainer.querySelectorAll('[data-ftl-word-filter-remove]').forEach(btn => {
         btn.addEventListener('click', () => removeFilter(btn.getAttribute('data-ftl-word-filter-remove')));
+    });
+}
+
+// ── Re-run panel ────────────────────────────────────────────────────
+
+function wireUpRerun(contentArea) {
+    const seasonSelect = contentArea.querySelector('[data-ftl-rerun-season]');
+    const daySelect = contentArea.querySelector('[data-ftl-rerun-day]');
+    const timeInput = contentArea.querySelector('[data-ftl-rerun-time]');
+    const startBtn = contentArea.querySelector('[data-ftl-rerun-start]');
+    const openBtn = contentArea.querySelector('[data-ftl-rerun-open]');
+    const statusEl = contentArea.querySelector('[data-ftl-rerun-status]');
+    if (!daySelect || !startBtn) return;
+
+    // Populate the day picker from the current season's day listing
+    function populateDays() {
+        daySelect.innerHTML = '<option class="bg-dark text-light-text">Loading days…</option>';
+        loadSeasonData().then((ok) => {
+            if (!daySelect.isConnected) return;
+            if (!ok) {
+                daySelect.innerHTML = '<option class="bg-dark text-light-text">Unavailable — are you logged in with a season pass?</option>';
+                return;
+            }
+            const days = getSeasonDays();
+            daySelect.innerHTML = days
+                .map((d, i) => `<option class="bg-dark text-light-text" value="${i + 1}">Day ${i + 1} — ${d}</option>`)
+                .join('');
+            const now = virtualNow();
+            if (now != null) {
+                const dayNumber = virtualMsToDayNumber(now);
+                if (dayNumber) daySelect.value = String(dayNumber);
+                if (timeInput) timeInput.value = archives.formatHouseClock(now).slice(0, 5);
+            }
+        });
+    }
+    populateDays();
+
+    // Switching season clears the anchor (day/time don't carry over)
+    // and closes any open player until a new start point is picked.
+    seasonSelect?.addEventListener('change', () => {
+        changeSeason(seasonSelect.value);
+        closeRerunOverlay();
+        populateDays();
+        renderStatus();
+    });
+
+    function renderStatus() {
+        const now = virtualNow();
+        if (!isRerunActive() || now == null) {
+            statusEl.textContent = 'No start point set.';
+            return;
+        }
+        const dayNumber = virtualMsToDayNumber(now);
+        statusEl.textContent = `Current position: Day ${dayNumber ?? '?'} ${formatClock(now)}`
+            + ` (${archives.formatHouseDate(now)})${isPaused() ? ' — paused' : ''}`;
+    }
+    renderStatus();
+    const statusInterval = setInterval(() => {
+        if (!statusEl.isConnected) { clearInterval(statusInterval); return; }
+        renderStatus();
+    }, 1000);
+
+    startBtn.addEventListener('click', () => {
+        const virtualMs = dayTimeToVirtualMs(Number(daySelect.value), timeInput.value || '00:00');
+        if (virtualMs == null) {
+            statusEl.textContent = 'Pick a valid day and time first.';
+            return;
+        }
+        setAnchor(virtualMs);
+        updateSetting('rerunEnabled', true);
+        dispatchPageEvent('modalClose');
+        closeRerunOverlay(); // rebuild fresh if already open
+        openRerunOverlay();
+    });
+
+    openBtn?.addEventListener('click', () => {
+        dispatchPageEvent('modalClose');
+        closeRerunOverlay();
+        openRerunOverlay();
+    });
+
+    // Clear the set re-run (two-step confirm, same pattern as log clear)
+    const clearBtn = contentArea.querySelector('[data-ftl-rerun-clear]');
+    const clearConfirm = contentArea.querySelector('[data-ftl-rerun-clear-confirm]');
+    const clearYes = contentArea.querySelector('[data-ftl-rerun-clear-yes]');
+    const clearNo = contentArea.querySelector('[data-ftl-rerun-clear-no]');
+
+    clearBtn?.addEventListener('click', () => {
+        clearBtn.classList.add('hidden');
+        clearConfirm.classList.remove('hidden');
+    });
+    clearNo?.addEventListener('click', () => {
+        clearConfirm.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+    });
+    clearYes?.addEventListener('click', () => {
+        clearConfirm.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+        closeRerunOverlay();
+        clearAnchor();
+        if (timeInput) timeInput.value = '18:00';
+        renderStatus();
     });
 }
 

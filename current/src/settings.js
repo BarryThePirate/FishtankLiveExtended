@@ -18,6 +18,16 @@ const DEFAULTS = {
     // monitorSeasonPassXL: true,
     videoStutterImprover: true,
     archiveGridSaver: true,
+    // Re-run mode — personal "as live" archive playback
+    rerunEnabled: false,
+    rerunSeason: 's03',
+    rerunAnchorVirtual: null,  // ms, show-time frame (see SDK archives module)
+    rerunAnchorReal: null,     // epoch ms when the anchor was set
+    rerunTickWhileAway: true,  // clock advances even when off the site
+    rerunClickableZones: true, // door zones in the re-run player
+    rerunClock12h: false,      // show the re-run clock as 12-hour AM/PM
+    rerunPaused: false,
+    rerunPausedAtVirtual: null,
     smartAntiSpam: false,
     hideTTSMessages: false,
     hideSFXMessages: false,

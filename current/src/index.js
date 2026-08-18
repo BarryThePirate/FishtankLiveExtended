@@ -24,9 +24,13 @@ import { loadLogs, logTts, logSfx, logPing, logRoleMessage, logAdminToast, setOn
 import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints } from './crafting.js';
 import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, tryInjectIrcButton, toggleIrcMode, isIrcActive, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
 import { initZoneDetection } from './zones.js';
-import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept } from './theatre.js';
+import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept, tryInjectVodControls } from './theatre.js';
 import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
 import { initArchiveGridSaver } from './archive-grid.js';
+import { initClockPersistence, isRerunActive } from './rerun.js';
+import { handleRerunEscape, openRerunOverlay } from './rerun-ui.js';
+import { handleZonesEscape } from './rerun-zones.js';
+import { tryInjectSiteZones } from './site-zones.js';
 
 const DEBUG = false;
 
@@ -152,6 +156,15 @@ site.whenReady(async () => {
     loadRecipesFromCache();
     fetchRecipes();
     player.streams.fetchRoomNames();
+
+    // Re-run mode: apply away-time handling to the virtual clock and
+    // start the presence heartbeat. If a re-run is active, open the
+    // player automatically — the whole point is that coming back to
+    // the site drops you straight back into "live".
+    initClockPersistence();
+    if (isRerunActive()) {
+        openRerunOverlay();
+    }
 
     // ── Socket.IO connection (primary data source) ──────────────────
     // Connects to wss://ws.fishtank.live with msgpack encoding.
@@ -422,7 +435,13 @@ site.whenReady(async () => {
         }
     });
     ui.keyboard.register('theatre-exit',      { key: 'escape', preventDefault: false }, () => {
-        if (isTheatreActive()) exitTheatre();
+        // Theatre first: when theatre is applied to the re-run player,
+        // ESC should peel back one layer at a time (theatre → grid → close).
+        if (isTheatreActive()) { exitTheatre(); return; }
+        if (handleRerunEscape()) return;
+        // Zone editor on the site's own archive player (the personal
+        // re-run overlay handles its own zones inside handleRerunEscape)
+        if (handleZonesEscape()) return;
         if (isIrcActive()) toggleIrcMode();
     });
     ui.keyboard.register('open-craft',        { key: 'c' }, shortcutIf(() => openModal('craftItem')));
@@ -446,6 +465,13 @@ site.whenReady(async () => {
         setTimeout(tryInjectDropdownButton, 100);
         setTimeout(tryInjectInventorySearch, 100);
         setTimeout(tryInjectCraftingItemSearch, 100);
+        // VOD player appears after clicking a grid tile — its React
+        // render can lag the click, so check twice.
+        setTimeout(tryInjectVodControls, 150);
+        setTimeout(tryInjectVodControls, 600);
+        // Site archive-live player — attach clickable room zones
+        setTimeout(tryInjectSiteZones, 150);
+        setTimeout(tryInjectSiteZones, 600);
     });
 
     // ── Hidden clickable zone detection ────────────────────────────────
@@ -469,9 +495,13 @@ site.whenReady(async () => {
     // when playback falls more than 3 seconds behind. It also resets
     // the playback rate to 1x to prevent the decoder from struggling.
 
-    if (getSetting('videoStutterFix')) {
+    // Setting key is videoStutterImprover (was checking a non-existent
+    // 'videoStutterFix' key, so this never ran). Live-edge snapping only
+    // makes sense for the HLS player — scope the lookup to it so VOD and
+    // re-run playback are never yanked forward.
+    if (getSetting('videoStutterImprover')) {
         setInterval(() => {
-            const video = document.querySelector('video');
+            const video = document.getElementById('live-stream-player')?.querySelector('video');
             if (!video || !video.buffered.length) return;
             if (video.playbackRate !== 1) video.playbackRate = 1;
             const edge = video.buffered.end(video.buffered.length - 1);

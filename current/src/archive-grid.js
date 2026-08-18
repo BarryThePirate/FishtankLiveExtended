@@ -82,6 +82,11 @@ function isPromotedFullscreen(video) {
  * Neutralise one grid tile: stash its src, remove it, abort the fetch.
  */
 function stripVideo(video) {
+    // Never touch the re-run overlay's player — it lives inside the
+    // page wrapper (our observer anchor) and plays from the same
+    // archive CDN, but it's deliberately streaming.
+    if (video.closest('[data-ftl-sdk="rerun"]')) return;
+
     // Leave the promoted/fullscreen video alone, and restore its src
     // if we'd previously stripped it (e.g. it just got promoted). When
     // promoting we also resume playback, since we'd called load() which

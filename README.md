@@ -19,11 +19,11 @@ Version 2.0.0 is a complete rewrite for the current fishtank.live site, powered 
 
 ## Settings
 - Press **E** at any time to open the FTL Extended settings panel
-- Four tabs: General, Crafting, Logging, and Chat
+- Five tabs: General, Crafting, Logging, Chat, and Re-run
 - All settings are saved and persist across sessions
 
 ## General
-- **Enhanced Theatre Mode**: replaces the site's built-in theatre mode with a cleaner layout — video fills the viewport with a collapsible chat panel on the right. Toggle chat with the button or hide it entirely. Press **T** or click the site's theatre button to enter, **T** or **ESC** to exit. Can be disabled in settings to use the site's default theatre mode
+- **Enhanced Theatre Mode**: replaces the site's built-in theatre mode with a cleaner layout — video fills the viewport with a collapsible chat panel on the right. Toggle chat with the button or hide it entirely. Press **T** or click the site's theatre button to enter, **T** or **ESC** to exit. Works on the live player, the site's VOD/archive player, and the Re-run player. Can be disabled in settings to use the site's default theatre mode
 - **Fullscreen**: press **F** or click the fullscreen button to enter our theatre mode + browser fullscreen together. Press **F** again to exit fullscreen, **T** or **ESC** to exit theatre mode entirely
 - **Keyboard Shortcuts**: Q (Settings), P (Edit Profile), H (Help), X (Season Pass), C (Craft), M (Item Market), S (Stox). All togglable in settings. E always works
 - **Hidden Clickable Zones**: reveals secret clickable areas on the video player with a golden highlight on hover. Togglable in settings
@@ -58,6 +58,19 @@ All logs are accessible from the Logging tab in the FTL Extended settings panel.
 
 All chat-style logs display with avatars, usernames (click to @mention), role-specific styling, and timestamps matching the site's own chat layout. Logs are deduplicated across multiple tabs.
 
+## Re-run Mode
+Replay a past season's archive footage "as if live". Pick a season, day, and start time in the Re-run tab, and the extension plays the archives in real time from that point — the clock keeps ticking between visits, so you can follow a season day by day just like it originally aired. Requires being logged in to fishtank.live with a season pass for archive access (the site lists Season 1 as free).
+
+- **Room Grid**: the site's stream grid is replaced with a grid of the season's cameras, styled to match the site. On-air cameras show a preview thumbnail of the current moment (refreshing as the clock runs); off-air cameras show a No Signal countdown to when their footage resumes
+- **Player**: click a camera to watch it with volume, pause, theatre, and fullscreen controls, plus the Day and house-time clock (real US Eastern local time, matching what you see on screen). Playback transitions between archive chunks near-gaplessly and recovers automatically from expired video URLs
+- **Clickable Room Zones**: click a doorway in the video to follow someone into the next room — zones are built in for Seasons 1 and 3. Togglable in settings
+- **Zone Editor**: the Zones button in the player lets you trace your own clickable zones (click points to draw, pick the target room) and delete any zone — including the built-in defaults, with Reset Room to restore them. Your zones are saved locally, and Copy JSON exports the full set for sharing
+- **Zones on the Site's Re-run**: when the site itself is running a season re-run, the same clickable zones (and editor) attach to its player too — click doorways to hop between the site's cameras
+- **Clock Controls**: pause the re-run clock at any time, nudge it backwards or forwards (±1m / 5m / 1h) with the buttons in the header bar and player, or with the arrow keys (**←/→** = 1m, **Shift** = 5m, **Ctrl** = 1h — works in fullscreen). Turn off "Clock Runs While Away" so time only passes while you're on the site; Clear Re-run wipes the start point when you're done. Player controls auto-hide while you watch and reappear on mouse movement
+- **Seasons**: Season 1 and Season 3 are supported, with more slotting in as the site adds archives — and the zone editor works on any season, so new re-runs can be traced from day one
+
+Season 1 zone geometry adapted from the "Fishtank Custom Clickable Zones" userscript by @c (MIT). Season 3 zones traced with the built-in editor.
+
 ## Technical Details
 - Chat, TTS, and SFX data is captured via a dedicated Socket.IO connection (not DOM scraping), ensuring no messages are missed
 - Chat filtering operates at the Zustand store level, removing messages from React state before they render — no DOM manipulation, no flickering
@@ -66,6 +79,8 @@ All chat-style logs display with avatars, usernames (click to @mention), role-sp
 - Zero persistent MutationObservers on document.body (performance critical — the site renders thousands of chat mutations per second)
 - Room names are resolved via the fishtank.live API and cached locally
 - Cross-tab log deduplication prevents duplicate entries when multiple tabs are open
+- Re-run mode is built directly on the fishtank.live archive API (listings + signed watch URLs) — it doesn't depend on the site's own temporary re-run feature, so it keeps working after that's gone
+- Re-run on-air detection adapts to each season's archive structure (15-minute chunks, hour-long segments, or motion-triggered clips) by estimating footage duration from file sizes
 
 <h1 align="center">Features (Classic Site)</h1>
 
