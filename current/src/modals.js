@@ -24,7 +24,8 @@ import {
     virtualNow, virtualMsToDayNumber, isRerunActive, isPaused, formatClock,
     changeSeason, AVAILABLE_SEASONS,
 } from './rerun.js';
-import { openRerunOverlay, closeRerunOverlay } from './rerun-ui.js';
+import { openRerunOverlay, closeRerunOverlay, watchShareCode } from './rerun-ui.js';
+import { tryInjectRerunPanel, removeRerunPanel } from './rerun-panel.js';
 import { refreshZones } from './rerun-zones.js';
 
 let currentUsername = null;
@@ -416,7 +417,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
+            <div class="text-xs text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -500,6 +501,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Clock Runs While Away', 'rerunTickWhileAway', getSetting('rerunTickWhileAway'), 'On: time passes even while you’re off the site, like live TV. Off: the clock only ticks while you’re here')}
             ${toggleRow('Clickable Room Zones', 'rerunClickableZones', getSetting('rerunClickableZones'), 'Click doorways in the video to move between rooms')}
             ${toggleRow('12-Hour Clock', 'rerunClock12h', getSetting('rerunClock12h'), 'Show the re-run clock as AM/PM instead of 24-hour')}
+            ${toggleRow('Sidebar Panel', 'rerunSidebarPanel', getSetting('rerunSidebarPanel'), "Show a Re-run status panel in the site's left sidebar")}
 
             <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
                 <div class="text-sm font-medium mb-1 opacity-75">Start Point</div>
@@ -531,6 +533,12 @@ function buildSettingsContent(modal) {
                         <button data-ftl-rerun-clear-yes class="cursor-pointer text-red-400 hover:opacity-100 font-bold" type="button">Yes</button>
                         <button data-ftl-rerun-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
                     </div>
+                </div>
+                <div class="flex gap-1 items-center mt-2">
+                    <input data-ftl-rerun-code type="text" placeholder="Paste a share code or link…" class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <button data-ftl-rerun-watch class="bg-gradient-to-r from-secondary-500 to-secondary-600/75 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Watch</div>
+                    </button>
                 </div>
             </div>
         </div>
@@ -616,6 +624,12 @@ function wireUpToggles(contentArea) {
             // Live-apply zone visibility in an open player
             if (key === 'rerunClickableZones') {
                 refreshZones();
+            }
+
+            // Add/remove the sidebar Re-run panel immediately
+            if (key === 'rerunSidebarPanel') {
+                if (newVal) tryInjectRerunPanel();
+                else removeRerunPanel();
             }
 
             // Immediately notify page-level chat filter when any chat setting changes
@@ -950,6 +964,24 @@ function wireUpRerun(contentArea) {
         dispatchPageEvent('modalClose');
         closeRerunOverlay();
         openRerunOverlay();
+    });
+
+    // Watch a pasted share code as a preview (own re-run untouched)
+    const codeInput = contentArea.querySelector('[data-ftl-rerun-code]');
+    const watchBtn = contentArea.querySelector('[data-ftl-rerun-watch]');
+    watchBtn?.addEventListener('click', async () => {
+        const value = codeInput?.value.trim();
+        if (!value) return;
+        const err = await watchShareCode(value);
+        if (err) {
+            statusEl.textContent = err;
+            return;
+        }
+        codeInput.value = '';
+        dispatchPageEvent('modalClose');
+    });
+    codeInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') watchBtn?.click();
     });
 
     // Clear the set re-run (two-step confirm, same pattern as log clear)

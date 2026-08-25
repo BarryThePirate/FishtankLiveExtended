@@ -25,12 +25,14 @@
 
 import { archives } from '../../ftl-ext-sdk/src/index.js';
 import * as storage from '../../ftl-ext-sdk/src/core/storage.js';
-import { getSetting } from './settings.js';
+import { getSetting, updateSetting } from './settings.js';
 import {
     loadSeasonData, getSeasonRooms, virtualNow, virtualMsToDayNumber,
     isPaused, pause, resume, nudge, isPastSeasonEnd, getRoomStateAt, getChunkUrl,
-    formatClock,
+    formatClock, dayTimeToVirtualMs, changeSeason,
+    isPreviewActive, startPreview, endPreview,
 } from './rerun.js';
+import { encodeShareCode, parseShareCode, shareUrl } from './rerun-share.js';
 import { initZones, setZonesRoom, handleZonesEscape, updateZoneStatuses } from './rerun-zones.js';
 import {
     isTheatreActive, exitTheatre, toggleTheatre,
@@ -124,6 +126,14 @@ function injectStyles() {
         #${OVERLAY_ID}.ftl-rerun-is-paused .ftl-rerun-paused-badge { display: inline-block; }
         #${OVERLAY_ID} .ftl-rerun-spacer { flex: 1; }
         #${OVERLAY_ID} .ftl-rerun-nudges { display: flex; gap: 4px; }
+        #${OVERLAY_ID} .ftl-rerun-shared-badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            border: 1px solid currentColor;
+            border-radius: 4px;
+            padding: 2px 6px;
+            white-space: nowrap;
+        }
         #${OVERLAY_ID} .ftl-rerun-btn {
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.15);
@@ -313,8 +323,13 @@ function injectStyles() {
 // Fallback: fixed full-viewport overlay with the chat raised above it.
 
 function findSiteGrid() {
-    const wrapper = document.querySelector('div.pb-10 > div.relative');
-    if (!wrapper) return null;
+    const outer = document.querySelector('div.pb-10');
+    if (!outer) return null;
+    // Layout drift: originally the grid was nested as pb-10 > div.relative
+    // > div.grid; the Aug 2026 site update dropped the div.relative and
+    // puts div.grid directly under pb-10. Support both.
+    const inner = [...outer.children].find(el => el.classList.contains('relative'));
+    const wrapper = inner || outer;
     const grid = [...wrapper.children].find(el => el.classList.contains('grid'));
     return grid ? { wrapper, grid } : null;
 }
@@ -353,6 +368,13 @@ function mountDocked() {
     const found = findSiteGrid();
     if (!found) return false;
     dockedGrid = found.grid;
+    // The old div.relative wrapper was a positioned ancestor; the new
+    // bare pb-10 wrapper isn't. Make it one so the overlay's absolute
+    // coordinates match the grid's offsets (position:relative with no
+    // offsets doesn't move anything).
+    if (getComputedStyle(found.wrapper).position === 'static') {
+        found.wrapper.style.position = 'relative';
+    }
     overlay.style.right = '';
     found.wrapper.appendChild(overlay);
     positionOverlay();
@@ -480,6 +502,44 @@ export function handleRerunEscape() {
     return true;
 }
 
+/**
+ * Open a share code (or share link) as a PREVIEW: the re-run plays
+ * from the shared moment while the user's own anchor stays untouched.
+ * Returns '' on success, or a human-readable error message.
+ */
+export async function watchShareCode(input) {
+    const code = parseShareCode(input);
+    if (!code) return 'That doesn\'t look like a valid share code.';
+
+    if (code.season !== getSetting('rerunSeason')) {
+        // v1: previews can't span seasons (season data is a singleton),
+        // so a cross-season code means switching outright.
+        const hasOwn = getSetting('rerunAnchorVirtual') != null;
+        if (hasOwn && !confirm(
+            `This share code is for season ${code.season.replace(/^s0?/, '')}, but your re-run is in another season. `
+            + 'Watching it will end your current re-run. Continue?')) {
+            return '';
+        }
+        changeSeason(code.season);
+    }
+
+    const ok = await loadSeasonData();
+    if (!ok) return 'Couldn\'t load archive data — are you logged in with a season pass?';
+    const ms = dayTimeToVirtualMs(code.day, code.time);
+    if (ms == null) return `That season doesn't have a Day ${code.day}.`;
+    if (code.room && !getSeasonRooms().includes(code.room)) {
+        return `Unknown room "${code.room}" in that season.`;
+    }
+
+    closeRerunOverlay(); // rebuild fresh (also discards any older preview)
+    // Always a temporary layer — opening a link never writes anything;
+    // an existing re-run stays untouched underneath.
+    startPreview(ms);
+    await openRerunOverlay();
+    if (code.room && playerEl) focusRoom(code.room);
+    return '';
+}
+
 export async function openRerunOverlay() {
     if (overlay) return;
     injectStyles();
@@ -525,6 +585,7 @@ export async function openRerunOverlay() {
 export function closeRerunOverlay() {
     if (!overlay) return;
     exitFocused();
+    endPreview(); // previews never outlive the overlay
     intervals.forEach(clearInterval);
     intervals = [];
     if (resyncTimeout) { clearTimeout(resyncTimeout); resyncTimeout = null; }
@@ -596,10 +657,38 @@ function buildHeader() {
         'primary'
     );
 
-    header.append(title, clock, nudges, pausedBadge, spacer, pauseBtn, closeBtn);
+    header.append(title, clock);
+    if (isPreviewActive()) {
+        const sharedBadge = document.createElement('span');
+        sharedBadge.className = 'ftl-rerun-shared-badge text-primary-400';
+        sharedBadge.textContent = 'Shared Moment';
+        header.appendChild(sharedBadge);
+    }
+    header.append(nudges, pausedBadge, spacer);
+    if (isPreviewActive()) header.appendChild(makePreviewControls());
+    header.append(pauseBtn, closeBtn);
     overlay.appendChild(header);
     overlay.classList.toggle('ftl-rerun-is-paused', isPaused());
     renderClocks();
+}
+
+/**
+ * The single way out of a shared moment: exit it and land back on your
+ * own re-run, which stayed untouched (and kept running) underneath.
+ * One instance lives in the header, one in the auto-hiding player bar.
+ */
+function makePreviewControls() {
+    return siteTextButton(
+        'Stop watching this shared moment and return to your own re-run',
+        'Exit Shared Moment',
+        () => {
+            const hasOwn = getSetting('rerunAnchorVirtual') != null;
+            endPreview();
+            closeRerunOverlay();
+            if (hasOwn) openRerunOverlay();
+        },
+        'primary'
+    );
 }
 
 // Site react-icons path (IoClose), matching the site player's X button.
@@ -677,7 +766,7 @@ function togglePause() {
     updatePauseUi();
 }
 
-function updatePauseUi() {
+export function updatePauseUi() {
     if (!overlay) return;
     const paused = isPaused();
     overlay.querySelectorAll('.ftl-rerun-pause-btn').forEach(b => {
@@ -927,7 +1016,22 @@ function buildPlayer() {
 
     const pauseBtn = makePauseButton();
 
-    bar.append(muteBtn, volume, pauseBtn, makeNudgeButtons());
+    // Share: copy a link to this exact moment + room to the clipboard
+    const shareBtn = siteTextButton('Copy a share link for this moment', 'Share', () => {
+        const code = encodeShareCode(getSetting('rerunSeason'), virtualNow(), focusedRoom);
+        if (!code) return;
+        const url = shareUrl(code);
+        const face = shareBtn.firstElementChild;
+        navigator.clipboard.writeText(url).then(() => {
+            face.textContent = 'Copied!';
+            setTimeout(() => { face.textContent = 'Share'; }, 2000);
+        }).catch(() => {
+            prompt('Copy this share link:', url);
+        });
+    });
+
+    bar.append(muteBtn, volume, pauseBtn, makeNudgeButtons(), shareBtn);
+    if (isPreviewActive()) bar.appendChild(makePreviewControls());
     if (getSetting('enhancedTheatreMode')) {
         bar.appendChild(siteIconButton('Theater Mode (T)', THEATRE_ICON_SVG, () => toggleTheatre()));
     }
@@ -986,6 +1090,9 @@ const VOLUME_ICONS = {
 function updateVolumeIcon(btn) {
     if (!videoEl) return;
     const v = videoEl.volume;
+    // Keep the slider honest too: it shows 0 while muted
+    const slider = playerEl?.querySelector('.ftl-rerun-player-bar input[type="range"]');
+    if (slider) slider.value = videoEl.muted ? '0' : String(v);
     const key = (videoEl.muted || v === 0) ? 'mute' : v < 0.34 ? 'low' : v < 0.67 ? 'med' : 'high';
     btn.title = key === 'mute' ? 'Unmute' : 'Mute';
     btn.innerHTML = '<svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512"'
@@ -1166,12 +1273,42 @@ function applySeek() {
     tryPlay();
 }
 
+let playRetryInstalled = false;
+
 function tryPlay() {
     videoEl.play().catch(() => {
-        // Autoplay blocked — resume on first interaction
-        document.addEventListener('pointerdown', () => {
-            if (focusedRoom && videoEl && !isPaused()) videoEl.play().catch(() => {});
-        }, { once: true });
+        // Audible autoplay blocked (no user gesture yet — e.g. a share
+        // link; Firefox is strict about this). Muted playback is
+        // allowed everywhere, so fall back to that and restore sound
+        // on the first interaction.
+        if (!videoEl) return;
+        const restoreSound = !videoEl.muted;
+        videoEl.muted = true;
+        const volBtn = playerEl?.querySelector('.ftl-rerun-volume-btn');
+        if (volBtn) updateVolumeIcon(volBtn);
+        if (restoreSound) {
+            document.addEventListener('pointerdown', () => {
+                if (!videoEl || !focusedRoom) return;
+                videoEl.muted = false;
+                if (volBtn) updateVolumeIcon(volBtn);
+                if (!isPaused()) videoEl.play().catch(() => {});
+            }, { once: true });
+        }
+        videoEl.play().catch(() => {
+            // Even muted playback refused — retry on interactions
+            if (playRetryInstalled) return;
+            playRetryInstalled = true;
+            const retry = () => {
+                if (!videoEl || !focusedRoom || isPaused()) return;
+                videoEl.play().then(() => {
+                    playRetryInstalled = false;
+                    document.removeEventListener('pointerdown', retry);
+                    document.removeEventListener('keydown', retry);
+                }).catch(() => {});
+            };
+            document.addEventListener('pointerdown', retry);
+            document.addEventListener('keydown', retry);
+        });
     });
 }
 

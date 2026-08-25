@@ -29,7 +29,7 @@ Version 2.0.0 is a complete rewrite for the current fishtank.live site, powered 
 - **Hidden Clickable Zones**: reveals secret clickable areas on the video player with a golden highlight on hover. Togglable in settings
 - **Season Pass Popup Suppression**: automatically closes the season pass popup and removes the banner. Togglable in settings
 - **Video Stutter Improver**: automatically resets the playback rate and snaps to the live edge when the stream falls behind, preventing the freeze-and-fast-forward cycle caused by the site's built-in catch-up mechanism. Togglable in settings
-- **Inventory Search**: adds a search box to the inventory popup and the crafting modal's item select grid, filtering items by name as you type. Also works in the trade modal. Togglable in settings
+- **Inventory Search**: adds a search box to the inventory panel and the crafting modal's item select grid, filtering items by name as you type, plus an expand button to show the whole inventory at once. Also works in the trade modal. Togglable in settings
 - **Ping Indicator**: a button in the chat header that dims when you have no unread pings and lights up when someone @mentions you — click it to jump straight to the pings log. Togglable in settings
 
 ## Chat
@@ -67,6 +67,8 @@ Replay a past season's archive footage "as if live". Pick a season, day, and sta
 - **Zone Editor**: the Zones button in the player lets you trace your own clickable zones (click points to draw, pick the target room) and delete any zone — including the built-in defaults, with Reset Room to restore them. Your zones are saved locally, and Copy JSON exports the full set for sharing
 - **Zones on the Site's Re-run**: when the site itself is running a season re-run, the same clickable zones (and editor) attach to its player too — click doorways to hop between the site's cameras
 - **Clock Controls**: pause the re-run clock at any time, nudge it backwards or forwards (±1m / 5m / 1h) with the buttons in the header bar and player, or with the arrow keys (**←/→** = 1m, **Shift** = 5m, **Ctrl** = 1h — works in fullscreen). Turn off "Clock Runs While Away" so time only passes while you're on the site; Clear Re-run wipes the start point when you're done. Player controls auto-hide while you watch and reappear on mouse movement
+- **Sidebar Panel**: a Re-run panel in the site's left sidebar, styled like the site's own, with the season, live clock, pause, Open Player, and Clear controls — collapsible like its neighbours. Togglable in settings
+- **Share Codes**: the Share button in the player copies a link to the exact moment and room you're watching (e.g. `fishtank.live/#FTL1-s03-D11-1817-kitchen` — readable, and the same real moment for everyone). Opening someone's link plays that moment as a temporary "shared moment" — it never changes your own re-run, and Exit Shared Moment takes you back to it. Codes can also be pasted in the Re-run settings tab
 - **Seasons**: Season 1 and Season 3 are supported, with more slotting in as the site adds archives — and the zone editor works on any season, so new re-runs can be traced from day one
 
 Season 1 zone geometry adapted from the "Fishtank Custom Clickable Zones" userscript by @c (MIT). Season 3 zones traced with the built-in editor.

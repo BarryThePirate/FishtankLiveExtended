@@ -17,7 +17,7 @@ let inventoryInjected = false;
 
 // ── Shared: create a search input and wire up filtering ─────────────
 
-function createSearchInput(placeholder, items, container, insertAfter, trailing) {
+function createSearchInput(placeholder, items, container, insertAfter, trailing, autoFocus = true) {
     const wrapper = document.createElement('div');
     wrapper.setAttribute('data-ftl-sdk', 'item-search');
     wrapper.className = 'px-1 pb-1';
@@ -60,8 +60,9 @@ function createSearchInput(placeholder, items, container, insertAfter, trailing)
         container.style.alignContent = query ? 'start' : '';
     });
 
-    // Auto-focus
-    setTimeout(() => input.focus(), 50);
+    // Auto-focus (skipped for persistent hosts like the sidebar panel,
+    // where stealing focus on page load would be hostile)
+    if (autoFocus) setTimeout(() => input.focus(), 50);
 
     return wrapper;
 }
@@ -78,9 +79,14 @@ function buildSlotCounter(grid) {
         const used = Array.from(options).filter(o => o.querySelector('img')).length;
         counter.textContent = `${used}/${options.length}`;
     };
+    // Initial fill runs before the counter is inserted into the DOM, so
+    // only the observer-driven updates check for removal: if a site
+    // re-render dropped us, self-clean (the injection pass re-adds).
     update();
-
-    const observer = new MutationObserver(update);
+    const observer = new MutationObserver(() => {
+        if (!counter.isConnected) { observer.disconnect(); return; }
+        update();
+    });
     observer.observe(grid, { childList: true, subtree: true });
     return { counter, observer };
 }
@@ -122,6 +128,66 @@ export function tryInjectInventorySearch() {
         });
         closeObserver.observe(portal, { childList: true });
         return;
+    }
+}
+
+// ── Sidebar inventory panel (Aug 2026 site layout) ──────────────────
+// The site moved the inventory from a floating popup into a persistent
+// left sidebar panel. Same img[alt] filtering; the grid's children are
+// a live collection, so filtering tracks items as they change.
+
+const CHEVRON_DOWN_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 184l144 144 144-144"></path></svg>';
+const CHEVRON_UP_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 328l144-144 144 144"></path></svg>';
+
+/**
+ * Compact header button (matches the site's small sidebar buttons)
+ * that toggles the inventory grid between its capped height and
+ * showing every slot at once.
+ */
+function buildExpandButton(grid) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('data-ftl-sdk', 'inv-expand');
+    btn.title = 'Expand inventory';
+    btn.className = 'bg-gradient-to-r from-dark-400/75 to-dark-500/75 p-0.5 inline-flex items-center'
+        + ' justify-center cursor-pointer rounded-md hover:brightness-105'
+        + ' focus-visible:outline-1 focus-visible:outline-tertiary';
+    const face = document.createElement('div');
+    face.className = 'text-light-text bg-gradient-to-t from-dark-300 to-dark-400'
+        + ' active:bg-gradient-to-b active:from-dark-400 active:to-dark-300'
+        + ' border-light/25 active:border-light/15 p-0.5 rounded-sm';
+    face.innerHTML = CHEVRON_DOWN_SVG;
+    btn.appendChild(face);
+    btn.addEventListener('click', () => {
+        const expanded = grid.style.maxHeight === 'none';
+        // Inline style overrides the site's max-h-48 class; clearing it
+        // hands control back untouched.
+        grid.style.maxHeight = expanded ? '' : 'none';
+        face.innerHTML = expanded ? CHEVRON_DOWN_SVG : CHEVRON_UP_SVG;
+        btn.title = expanded ? 'Expand inventory' : 'Collapse inventory';
+    });
+    return btn;
+}
+
+export function tryInjectSidebarInventorySearch() {
+    if (!getSetting('enableInventorySearch')) return;
+
+    const title = [...document.querySelectorAll('span.font-bold')].find(
+        t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+    if (!title) return;
+    const panel = title.closest('.shadow-panel');
+    if (panel.querySelector('[data-ftl-sdk="item-search"]')) return;
+    const grid = panel.querySelector('[role="option"]')?.closest('.grid');
+    if (!grid) return;
+
+    const header = title.parentElement;
+    const { counter } = buildSlotCounter(grid);
+    createSearchInput('Search inventory...', grid.children, grid, header, counter, false);
+
+    // Expand/collapse toggle alongside the panel's own header buttons
+    const cluster = header.querySelector('.ml-auto');
+    if (cluster && !cluster.querySelector('[data-ftl-sdk="inv-expand"]')) {
+        cluster.prepend(buildExpandButton(grid));
     }
 }
 

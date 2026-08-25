@@ -26,6 +26,7 @@ const DEFAULTS = {
     rerunTickWhileAway: true,  // clock advances even when off the site
     rerunClickableZones: true, // door zones in the re-run player
     rerunClock12h: false,      // show the re-run clock as 12-hour AM/PM
+    rerunSidebarPanel: true,   // Re-run status panel in the site's left sidebar
     rerunPaused: false,
     rerunPausedAtVirtual: null,
     smartAntiSpam: false,

@@ -6114,6 +6114,71 @@
       return houseWallString(ms).slice(0, 10);
     }
 
+    // ── Share codes ─────────────────────────────────────────────────────
+    // A share code pins a moment in a season to a compact, human-readable
+    // string that means the same real moment for everyone:
+    //
+    //   FTL1-s03-D11-1817-kitchen
+    //   └┬─┘ └┬┘ └┬┘ └┬─┘ └──┬──┘
+    // version season day HHMM  room (optional)
+    //
+    // Day and time are HOUSE time (see above), so a code reads naturally
+    // in chat AND resolves to the same absolute moment for every user.
+    // Codes also travel as links via the URL fragment:
+    // https://fishtank.live/#FTL1-s03-D11-1817-kitchen (fragments never
+    // reach the server; extensions pick them up client-side).
+
+    const SHARE_CODE_RE = /^FTL1-(s\d{2})-D(\d{1,2})-(\d{2})(\d{2})(?:-([a-z0-9-]+))?$/i;
+
+    /**
+     * Build a share code from structured fields.
+     *
+     * @param {{season: string, day: number, time: string, room?: string|null}} parts
+     *   - season e.g. 's03'; day 1-based; time 'HH:MM' house-local 24h;
+     *     room code or null for "land on the grid"
+     * @returns {string} e.g. 'FTL1-s03-D11-1817-kitchen'
+     */
+    function buildShareCode({ season, day, time, room }) {
+      return `FTL1-${season}-D${day}-${time.replace(':', '')}${room ? `-${room}` : ''}`;
+    }
+
+    /**
+     * Parse a share code or share link. Accepts bare codes, full URLs, and
+     * '#'-prefixed fragments; case-insensitive; whitespace-tolerant.
+     *
+     * @param {string} input
+     * @returns {{season: string, day: number, time: string, room: string|null}|null}
+     *   null if the input isn't a valid code
+     */
+    function parseShareCode(input) {
+      if (typeof input !== 'string') return null;
+      let str = input.trim();
+      const hashIdx = str.indexOf('#');
+      if (hashIdx !== -1) str = str.slice(hashIdx + 1);
+      const m = str.match(SHARE_CODE_RE);
+      if (!m) return null;
+      const day = parseInt(m[2], 10);
+      const hh = parseInt(m[3], 10);
+      const mm = parseInt(m[4], 10);
+      if (day < 1 || hh > 23 || mm > 59) return null;
+      return {
+        season: m[1].toLowerCase(),
+        day,
+        time: `${m[3]}:${m[4]}`,
+        room: m[5] ? m[5].toLowerCase() : null,
+      };
+    }
+
+    /**
+     * The clickable-link form of a share code.
+     *
+     * @param {string} code
+     * @returns {string}
+     */
+    function shareUrl(code) {
+      return `https://fishtank.live/#${code}`;
+    }
+
     // ── Schedule helpers ────────────────────────────────────────────────
 
     /**
@@ -12208,6 +12273,7 @@
         rerunTickWhileAway: true,  // clock advances even when off the site
         rerunClickableZones: true, // door zones in the re-run player
         rerunClock12h: false,      // show the re-run clock as 12-hour AM/PM
+        rerunSidebarPanel: true,   // Re-run status panel in the site's left sidebar
         rerunPaused: false,
         rerunPausedAtVirtual: null,
         smartAntiSpam: false,
@@ -13913,10 +13979,39 @@
         return formatHouseClock(ms, !!getSetting('rerunClock12h'));
     }
 
+    // ── Shared-moment preview ───────────────────────────────────────────
+    // A share code opens as a PREVIEW: an in-memory anchor that overrides
+    // the stored one while active. The user's own re-run is a pure
+    // function of wall clock + stored anchor, so it keeps "airing"
+    // untouched underneath — discarding the preview returns to it exactly
+    // where it would have been. Nothing here is persisted: a refresh
+    // always lands back on the user's own re-run.
+
+    let preview = null; // { anchorVirtual, anchorReal, paused, pausedAtVirtual }
+
+    function isPreviewActive() {
+        return !!preview;
+    }
+
+    /**
+     * Start previewing a virtual moment (lands playing).
+     */
+    function startPreview(virtualMs) {
+        preview = { anchorVirtual: virtualMs, anchorReal: Date.now(), paused: false, pausedAtVirtual: null };
+    }
+
+    /**
+     * Discard the preview — the stored re-run takes over again.
+     */
+    function endPreview() {
+        preview = null;
+    }
+
     /**
      * Whether re-run mode is enabled AND has a usable anchor.
      */
     function isRerunActive() {
+        if (preview) return true;
         return !!(getSetting('rerunEnabled')
             && getSetting('rerunAnchorVirtual') != null
             && getSetting('rerunAnchorReal') != null);
@@ -13926,6 +14021,11 @@
      * Current virtual moment (show-time epoch ms), or null if no anchor.
      */
     function virtualNow() {
+        if (preview) {
+            return preview.paused
+                ? preview.pausedAtVirtual
+                : preview.anchorVirtual + (Date.now() - preview.anchorReal);
+        }
         if (getSetting('rerunPaused') && getSetting('rerunPausedAtVirtual') != null) {
             return getSetting('rerunPausedAtVirtual');
         }
@@ -13951,6 +14051,7 @@
      * anchor is set.
      */
     function clearAnchor() {
+        preview = null;
         updateSetting('rerunAnchorVirtual', null);
         updateSetting('rerunAnchorReal', null);
         updateSetting('rerunPaused', false);
@@ -13958,6 +14059,7 @@
     }
 
     function isPaused() {
+        if (preview) return preview.paused;
         return !!getSetting('rerunPaused');
     }
 
@@ -13967,6 +14069,11 @@
     function pause() {
         const now = virtualNow();
         if (now == null) return;
+        if (preview) {
+            preview.pausedAtVirtual = now;
+            preview.paused = true;
+            return;
+        }
         updateSetting('rerunPausedAtVirtual', now);
         updateSetting('rerunPaused', true);
     }
@@ -13982,6 +14089,11 @@
         let target = now + deltaMs;
         const bounds = getSeasonBounds();
         if (bounds) target = Math.min(Math.max(target, bounds.start), bounds.end - 1000);
+        if (preview) {
+            if (preview.paused) preview.pausedAtVirtual = target;
+            else startPreview(target);
+            return;
+        }
         if (isPaused()) {
             updateSetting('rerunPausedAtVirtual', target);
         } else {
@@ -13993,6 +14105,10 @@
      * Resume a paused clock from where it was frozen.
      */
     function resume() {
+        if (preview) {
+            if (preview.pausedAtVirtual != null) startPreview(preview.pausedAtVirtual);
+            return;
+        }
         const frozenAt = getSetting('rerunPausedAtVirtual');
         if (frozenAt == null) return;
         setAnchor(frozenAt);
@@ -14159,6 +14275,28 @@
         const parsed = parseVideoId(chunk.fileName);
         if (!parsed) return Promise.resolve(null);
         return getWatchUrl(parsed.season, parsed.room, parsed.day, parsed.fileName);
+    }
+
+    /**
+     * rerun-share.js — Share codes for re-run moments
+     *
+     * The code format itself (FTL1-s03-D11-1817-kitchen) lives in the SDK
+     * (archives.buildShareCode / parseShareCode / shareUrl) so other tools
+     * can speak it. This module is the extension-side glue: resolving the
+     * re-run's virtual clock to the day/time fields a code carries.
+     */
+
+
+    /**
+     * Build a share code for a virtual moment. Returns null if the moment
+     * doesn't map onto a season day (season data not loaded/out of range).
+     */
+    function encodeShareCode(season, virtualMs, room) {
+        if (virtualMs == null) return null;
+        const day = virtualMsToDayNumber(virtualMs);
+        if (day == null) return null;
+        const time = formatHouseClock(virtualMs).slice(0, 5);
+        return buildShareCode({ season, day, time, room });
     }
 
     /**
@@ -15644,6 +15782,14 @@
         #${OVERLAY_ID}.ftl-rerun-is-paused .ftl-rerun-paused-badge { display: inline-block; }
         #${OVERLAY_ID} .ftl-rerun-spacer { flex: 1; }
         #${OVERLAY_ID} .ftl-rerun-nudges { display: flex; gap: 4px; }
+        #${OVERLAY_ID} .ftl-rerun-shared-badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            border: 1px solid currentColor;
+            border-radius: 4px;
+            padding: 2px 6px;
+            white-space: nowrap;
+        }
         #${OVERLAY_ID} .ftl-rerun-btn {
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.15);
@@ -15833,8 +15979,13 @@
     // Fallback: fixed full-viewport overlay with the chat raised above it.
 
     function findSiteGrid() {
-        const wrapper = document.querySelector('div.pb-10 > div.relative');
-        if (!wrapper) return null;
+        const outer = document.querySelector('div.pb-10');
+        if (!outer) return null;
+        // Layout drift: originally the grid was nested as pb-10 > div.relative
+        // > div.grid; the Aug 2026 site update dropped the div.relative and
+        // puts div.grid directly under pb-10. Support both.
+        const inner = [...outer.children].find(el => el.classList.contains('relative'));
+        const wrapper = inner || outer;
         const grid = [...wrapper.children].find(el => el.classList.contains('grid'));
         return grid ? { wrapper, grid } : null;
     }
@@ -15873,6 +16024,13 @@
         const found = findSiteGrid();
         if (!found) return false;
         dockedGrid = found.grid;
+        // The old div.relative wrapper was a positioned ancestor; the new
+        // bare pb-10 wrapper isn't. Make it one so the overlay's absolute
+        // coordinates match the grid's offsets (position:relative with no
+        // offsets doesn't move anything).
+        if (getComputedStyle(found.wrapper).position === 'static') {
+            found.wrapper.style.position = 'relative';
+        }
         overlay.style.right = '';
         found.wrapper.appendChild(overlay);
         positionOverlay();
@@ -15994,6 +16152,44 @@
         return true;
     }
 
+    /**
+     * Open a share code (or share link) as a PREVIEW: the re-run plays
+     * from the shared moment while the user's own anchor stays untouched.
+     * Returns '' on success, or a human-readable error message.
+     */
+    async function watchShareCode(input) {
+        const code = parseShareCode(input);
+        if (!code) return 'That doesn\'t look like a valid share code.';
+
+        if (code.season !== getSetting('rerunSeason')) {
+            // v1: previews can't span seasons (season data is a singleton),
+            // so a cross-season code means switching outright.
+            const hasOwn = getSetting('rerunAnchorVirtual') != null;
+            if (hasOwn && !confirm(
+                `This share code is for season ${code.season.replace(/^s0?/, '')}, but your re-run is in another season. `
+                + 'Watching it will end your current re-run. Continue?')) {
+                return '';
+            }
+            changeSeason(code.season);
+        }
+
+        const ok = await loadSeasonData();
+        if (!ok) return 'Couldn\'t load archive data — are you logged in with a season pass?';
+        const ms = dayTimeToVirtualMs(code.day, code.time);
+        if (ms == null) return `That season doesn't have a Day ${code.day}.`;
+        if (code.room && !getSeasonRooms().includes(code.room)) {
+            return `Unknown room "${code.room}" in that season.`;
+        }
+
+        closeRerunOverlay(); // rebuild fresh (also discards any older preview)
+        // Always a temporary layer — opening a link never writes anything;
+        // an existing re-run stays untouched underneath.
+        startPreview(ms);
+        await openRerunOverlay();
+        if (code.room && playerEl) focusRoom(code.room);
+        return '';
+    }
+
     async function openRerunOverlay() {
         if (overlay) return;
         injectStyles();
@@ -16039,6 +16235,7 @@
     function closeRerunOverlay() {
         if (!overlay) return;
         exitFocused();
+        endPreview(); // previews never outlive the overlay
         intervals.forEach(clearInterval);
         intervals = [];
         if (resyncTimeout) { clearTimeout(resyncTimeout); resyncTimeout = null; }
@@ -16110,10 +16307,38 @@
             'primary'
         );
 
-        header.append(title, clock, nudges, pausedBadge, spacer, pauseBtn, closeBtn);
+        header.append(title, clock);
+        if (isPreviewActive()) {
+            const sharedBadge = document.createElement('span');
+            sharedBadge.className = 'ftl-rerun-shared-badge text-primary-400';
+            sharedBadge.textContent = 'Shared Moment';
+            header.appendChild(sharedBadge);
+        }
+        header.append(nudges, pausedBadge, spacer);
+        if (isPreviewActive()) header.appendChild(makePreviewControls());
+        header.append(pauseBtn, closeBtn);
         overlay.appendChild(header);
         overlay.classList.toggle('ftl-rerun-is-paused', isPaused());
         renderClocks();
+    }
+
+    /**
+     * The single way out of a shared moment: exit it and land back on your
+     * own re-run, which stayed untouched (and kept running) underneath.
+     * One instance lives in the header, one in the auto-hiding player bar.
+     */
+    function makePreviewControls() {
+        return siteTextButton(
+            'Stop watching this shared moment and return to your own re-run',
+            'Exit Shared Moment',
+            () => {
+                const hasOwn = getSetting('rerunAnchorVirtual') != null;
+                endPreview();
+                closeRerunOverlay();
+                if (hasOwn) openRerunOverlay();
+            },
+            'primary'
+        );
     }
 
     // Site react-icons path (IoClose), matching the site player's X button.
@@ -16441,7 +16666,22 @@
 
         const pauseBtn = makePauseButton();
 
-        bar.append(muteBtn, volume, pauseBtn, makeNudgeButtons());
+        // Share: copy a link to this exact moment + room to the clipboard
+        const shareBtn = siteTextButton('Copy a share link for this moment', 'Share', () => {
+            const code = encodeShareCode(getSetting('rerunSeason'), virtualNow(), focusedRoom);
+            if (!code) return;
+            const url = shareUrl(code);
+            const face = shareBtn.firstElementChild;
+            navigator.clipboard.writeText(url).then(() => {
+                face.textContent = 'Copied!';
+                setTimeout(() => { face.textContent = 'Share'; }, 2000);
+            }).catch(() => {
+                prompt('Copy this share link:', url);
+            });
+        });
+
+        bar.append(muteBtn, volume, pauseBtn, makeNudgeButtons(), shareBtn);
+        if (isPreviewActive()) bar.appendChild(makePreviewControls());
         if (getSetting('enhancedTheatreMode')) {
             bar.appendChild(siteIconButton('Theater Mode (T)', THEATRE_ICON_SVG, () => toggleTheatre()));
         }
@@ -16500,6 +16740,9 @@
     function updateVolumeIcon(btn) {
         if (!videoEl) return;
         const v = videoEl.volume;
+        // Keep the slider honest too: it shows 0 while muted
+        const slider = playerEl?.querySelector('.ftl-rerun-player-bar input[type="range"]');
+        if (slider) slider.value = videoEl.muted ? '0' : String(v);
         const key = (videoEl.muted || v === 0) ? 'mute' : v < 0.34 ? 'low' : v < 0.67 ? 'med' : 'high';
         btn.title = key === 'mute' ? 'Unmute' : 'Mute';
         btn.innerHTML = '<svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512"'
@@ -16680,12 +16923,42 @@
         tryPlay();
     }
 
+    let playRetryInstalled = false;
+
     function tryPlay() {
         videoEl.play().catch(() => {
-            // Autoplay blocked — resume on first interaction
-            document.addEventListener('pointerdown', () => {
-                if (focusedRoom && videoEl && !isPaused()) videoEl.play().catch(() => {});
-            }, { once: true });
+            // Audible autoplay blocked (no user gesture yet — e.g. a share
+            // link; Firefox is strict about this). Muted playback is
+            // allowed everywhere, so fall back to that and restore sound
+            // on the first interaction.
+            if (!videoEl) return;
+            const restoreSound = !videoEl.muted;
+            videoEl.muted = true;
+            const volBtn = playerEl?.querySelector('.ftl-rerun-volume-btn');
+            if (volBtn) updateVolumeIcon(volBtn);
+            if (restoreSound) {
+                document.addEventListener('pointerdown', () => {
+                    if (!videoEl || !focusedRoom) return;
+                    videoEl.muted = false;
+                    if (volBtn) updateVolumeIcon(volBtn);
+                    if (!isPaused()) videoEl.play().catch(() => {});
+                }, { once: true });
+            }
+            videoEl.play().catch(() => {
+                // Even muted playback refused — retry on interactions
+                if (playRetryInstalled) return;
+                playRetryInstalled = true;
+                const retry = () => {
+                    if (!videoEl || !focusedRoom || isPaused()) return;
+                    videoEl.play().then(() => {
+                        playRetryInstalled = false;
+                        document.removeEventListener('pointerdown', retry);
+                        document.removeEventListener('keydown', retry);
+                    }).catch(() => {});
+                };
+                document.addEventListener('pointerdown', retry);
+                document.addEventListener('keydown', retry);
+            });
         });
     }
 
@@ -16741,6 +17014,226 @@
             }
         } catch { /* prefetch is best-effort */ }
         finally { prefetching = false; }
+    }
+
+    /**
+     * rerun-panel.js — Re-run status panel in the site's left sidebar
+     *
+     * A compact panel styled exactly like the site's own sidebar panels
+     * (Events / Missions / Inventory), inserted between Missions and
+     * Inventory. Shows the season and the live re-run clock, with
+     * pause/resume, Open Player, and Clear controls, and collapses like
+     * its neighbours (collapse state persists).
+     *
+     * Injection is fail-silent: no sidebar (mobile) or changed markup
+     * simply means no panel. Gated by the rerunSidebarPanel setting.
+     */
+
+
+    const PANEL_ID = 'ftl-rerun-sidebar-panel';
+    const COLLAPSED_KEY = 'rerun-panel-collapsed';
+
+    // Icons: site react-icons paths (IoPause / IoPlay / IoRemove / IoAdd)
+    const PAUSE_SVG = '<svg viewBox="0 0 512 512" fill="currentColor" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"><path d="M208 432h-48a16 16 0 0 1-16-16V96a16 16 0 0 1 16-16h48a16 16 0 0 1 16 16v320a16 16 0 0 1-16 16zm144 0h-48a16 16 0 0 1-16-16V96a16 16 0 0 1 16-16h48a16 16 0 0 1 16 16v320a16 16 0 0 1-16 16z"></path></svg>';
+    const PLAY_SVG = '<svg viewBox="0 0 512 512" fill="currentColor" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"><path d="M133 440a35.37 35.37 0 0 1-17.5-4.67c-12-6.8-19.46-20-19.46-34.33V111c0-14.37 7.46-27.53 19.46-34.33a35.13 35.13 0 0 1 35.77.45l247.85 148.36a36 36 0 0 1 0 61l-247.89 148.4A35.5 35.5 0 0 1 133 440z"></path></svg>';
+    const MINUS_SVG = '<svg viewBox="0 0 512 512" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"><path fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round" stroke-width="32" d="M400 256H112"></path></svg>';
+    const PLUS_SVG = '<svg viewBox="0 0 512 512" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"><path fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round" stroke-width="32" d="M256 112v288m144-144H112"></path></svg>';
+
+    let panel = null;
+    let interval = null;
+    let els = null; // { activeBox, emptyBox, seasonEl, clockEl, pauseBtn, pauseFace }
+    let seasonLoadRequested = false;
+
+    // Compact icon button matching the site's small sidebar header buttons
+    function headerButton(title, svg, variant, onClick) {
+        const shells = {
+            dark: ['from-dark-400/75 to-dark-500/75', 'from-dark-300 to-dark-400 active:from-dark-400 active:to-dark-300'],
+            primary: ['from-primary-400 to-primary-500/90 active:to-primary-600/75', 'from-primary-400 to-primary-500 active:from-primary-500 active:to-primary-300'],
+        }[variant];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = title;
+        btn.className = `bg-gradient-to-r ${shells[0]} p-0.5 inline-flex items-center justify-center`
+            + ' cursor-pointer rounded-md hover:brightness-105 focus-visible:outline-1 focus-visible:outline-tertiary';
+        const face = document.createElement('div');
+        face.className = `text-light-text bg-gradient-to-t ${shells[1]} active:bg-gradient-to-b`
+            + ' border-light/25 active:border-light/15 p-0.5 rounded-sm';
+        face.innerHTML = svg;
+        btn.appendChild(face);
+        btn.addEventListener('click', onClick);
+        return { btn, face };
+    }
+
+    // Compact text button matching the site's small full-width buttons
+    // (e.g. the Stox button under the portfolio)
+    function smallTextButton(text, variant, onClick) {
+        const shells = {
+            secondary: ['from-secondary-500 to-secondary-600/75 active:to-secondary-700/90', 'from-secondary-400 to-secondary-500 active:from-secondary-500 active:to-secondary-300'],
+            primary: ['from-primary-400 to-primary-500/90 active:to-primary-700/90', 'from-primary-400 to-primary-500 active:from-primary-500 active:to-primary-300'],
+        }[variant];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `bg-gradient-to-r ${shells[0]} h-[24px] px-0.5 inline-flex items-center justify-center`
+            + ' text-center rounded-md cursor-pointer hover:brightness-105 focus-visible:outline-1'
+            + ' focus-visible:outline-tertiary flex-1';
+        const face = document.createElement('div');
+        face.className = `text-light-text bg-gradient-to-t ${shells[1]} active:bg-gradient-to-b text-shadow-md`
+            + ' border-light/25 active:border-light/15 text-sm px-1 flex justify-center items-center'
+            + ' h-full w-full m-auto rounded-md border-2 text-center font-medium whitespace-nowrap leading-none';
+        face.textContent = text;
+        btn.appendChild(face);
+        btn.addEventListener('click', onClick);
+        return btn;
+    }
+
+    function buildPanel() {
+        panel = document.createElement('div');
+        panel.id = PANEL_ID;
+        panel.setAttribute('data-ftl-sdk', 'rerun-panel');
+        panel.className = 'relative rounded-lg shadow-panel border-t-2 border-b-3 border-l-2 border-r-2'
+            + ' text-dark-text bg-light border-t-light-300/75 border-b-light-700/50 border-l-light-300/75'
+            + ' border-r-light-700/75 [background-image:var(--texture-panel)] w-full shrink-0 p-1';
+
+        const texture = document.createElement('div');
+        texture.className = 'absolute top-0 left-0 w-full h-full pointer-events-none rounded-lg'
+            + ' [background-image:var(--texture-panel)] opacity-50 z-[-1]';
+
+        // Header row: title + button cluster (pause/resume, collapse)
+        const header = document.createElement('div');
+        header.className = 'flex items-center px-1 gap-1.5';
+        const title = document.createElement('span');
+        title.className = 'font-bold text-sm leading-6 text-dark-text select-none';
+        title.textContent = 'Re-run';
+        const cluster = document.createElement('div');
+        cluster.className = 'ml-auto flex items-center gap-0.5';
+
+        const { btn: pauseBtn, face: pauseFace } = headerButton('Pause re-run clock', PAUSE_SVG, 'dark', () => {
+            if (isPaused()) resume(); else pause();
+            updatePauseUi(); // keep the overlay's pause buttons in sync
+            renderPanel();
+        });
+
+        // Collapsible content — same wrapper the site's panels use
+        const content = document.createElement('div');
+        content.className = 'origin-top overflow-hidden will-change-transform';
+
+        let collapsed = !!get(COLLAPSED_KEY, false);
+        const applyCollapse = () => {
+            content.style.display = collapsed ? 'none' : '';
+            collapseFace.innerHTML = collapsed ? PLUS_SVG : MINUS_SVG;
+            collapseBtn.title = collapsed ? 'Expand' : 'Collapse';
+        };
+        const { btn: collapseBtn, face: collapseFace } = headerButton('Collapse', MINUS_SVG, 'primary', () => {
+            collapsed = !collapsed;
+            set(COLLAPSED_KEY, collapsed);
+            applyCollapse();
+        });
+
+        cluster.append(pauseBtn, collapseBtn);
+        header.append(title, cluster);
+
+        // Inner dark box, like Events/Missions content
+        const inner = document.createElement('div');
+        inner.className = 'm-1 bg-dark-700/30 border-2 border-dark-300/50 rounded-lg p-1'
+            + ' text-light-text text-shadow-lg shadow-panel-soft';
+
+        // Active state: season + live clock + action buttons
+        const activeBox = document.createElement('div');
+        const info = document.createElement('div');
+        info.className = 'px-1 pt-1 pb-1.5 text-center';
+        const seasonEl = document.createElement('div');
+        seasonEl.className = 'font-bold text-sm leading-tight';
+        const clockEl = document.createElement('div');
+        clockEl.className = 'font-secondary tabular-nums text-xs leading-tight mt-0.5 text-green-400';
+        info.append(seasonEl, clockEl);
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'flex gap-1 p-0.5';
+        btnRow.append(
+            smallTextButton('Open Player', 'secondary', () => {
+                updateSetting('rerunEnabled', true);
+                closeRerunOverlay();
+                openRerunOverlay();
+            }),
+            smallTextButton('Clear', 'primary', () => {
+                if (!confirm('Clear your re-run start point?')) return;
+                clearAnchor();
+                closeRerunOverlay();
+                renderPanel();
+            }),
+        );
+        activeBox.append(info, btnRow);
+
+        // Empty state, phrased like the site's "Nothing on the schedule yet."
+        const emptyBox = document.createElement('div');
+        emptyBox.className = 'px-1 py-3 text-center text-light-text/90 text-xs select-none';
+        emptyBox.textContent = 'No re-run set. Press E and open the Re-run tab to start one.';
+
+        inner.append(activeBox, emptyBox);
+        content.appendChild(inner);
+        panel.append(texture, header, content);
+        applyCollapse();
+
+        els = { activeBox, emptyBox, seasonEl, clockEl, pauseBtn, pauseFace };
+    }
+
+    function renderPanel() {
+        if (!panel) return;
+        if (!panel.isConnected) {
+            // Site re-render dropped us — reset so the injection pass re-adds
+            clearInterval(interval);
+            interval = null;
+            panel = null;
+            els = null;
+            return;
+        }
+        const now = virtualNow();
+        const active = now != null;
+        els.activeBox.style.display = active ? '' : 'none';
+        els.emptyBox.style.display = active ? 'none' : '';
+        els.pauseBtn.style.display = active ? '' : 'none';
+        if (!active) return;
+
+        const season = getSetting('rerunSeason');
+        els.seasonEl.textContent = `Season ${parseInt(String(season).replace(/^s0?/, ''), 10) || season}`;
+
+        const day = virtualMsToDayNumber(now);
+        if (day == null && !seasonLoadRequested) {
+            // Day numbers need the season's day listing — fetch lazily
+            seasonLoadRequested = true;
+            loadSeasonData().then(() => renderPanel()).catch(() => {});
+        }
+        const paused = isPaused();
+        els.clockEl.textContent = `${day != null ? `Day ${day} · ` : ''}${formatClock(now)}${paused ? ' · Paused' : ''}`;
+        els.clockEl.classList.toggle('text-green-400', !paused);
+        els.clockEl.classList.toggle('text-primary-400', paused);
+        els.pauseFace.innerHTML = paused ? PLAY_SVG : PAUSE_SVG;
+        els.pauseBtn.title = paused ? 'Resume re-run clock' : 'Pause re-run clock';
+    }
+
+    function tryInjectRerunPanel() {
+        if (!getSetting('rerunSidebarPanel')) return;
+        if (document.getElementById(PANEL_ID)) return;
+
+        // Anchor on the sidebar's Inventory panel; our panel sits above it
+        // (between Missions and Inventory)
+        const invTitle = [...document.querySelectorAll('span.font-bold')].find(
+            t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+        const invPanel = invTitle?.closest('.shadow-panel');
+        if (!invPanel) return;
+
+        buildPanel();
+        invPanel.insertAdjacentElement('beforebegin', panel);
+        renderPanel();
+        interval = setInterval(renderPanel, 1000);
+    }
+
+    function removeRerunPanel() {
+        document.getElementById(PANEL_ID)?.remove();
+        if (interval) clearInterval(interval);
+        interval = null;
+        panel = null;
+        els = null;
     }
 
     /**
@@ -17142,7 +17635,7 @@
             ${toggleRow('Show Recipes When Consuming', 'showRecipeWhenConsuming', getSetting('showRecipeWhenConsuming'))}
             <input data-ftl-craft-search type="text" placeholder="Search recipes..." class="font-regular text-md leading-none w-full h-[32px] p-1 mt-2 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25 mb-2" />
             <div data-ftl-craft-results class="hidden overflow-y-auto border-1 border-dark-400/50 rounded-md px-2 py-1" style="max-height: 400px; scrollbar-width: thin;"></div>
-            <div class="text-xs opacity-40 text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
+            <div class="text-xs text-center mt-2">Powered by <a href="https://fishtank.guru" target="_blank" class="cursor-pointer text-primary font-heavy hover:underline">fishtank.guru</a></div>
         </div>
 
         <!-- Logging tab -->
@@ -17226,6 +17719,7 @@
             ${toggleRow('Clock Runs While Away', 'rerunTickWhileAway', getSetting('rerunTickWhileAway'), 'On: time passes even while you’re off the site, like live TV. Off: the clock only ticks while you’re here')}
             ${toggleRow('Clickable Room Zones', 'rerunClickableZones', getSetting('rerunClickableZones'), 'Click doorways in the video to move between rooms')}
             ${toggleRow('12-Hour Clock', 'rerunClock12h', getSetting('rerunClock12h'), 'Show the re-run clock as AM/PM instead of 24-hour')}
+            ${toggleRow('Sidebar Panel', 'rerunSidebarPanel', getSetting('rerunSidebarPanel'), "Show a Re-run status panel in the site's left sidebar")}
 
             <div class="mt-3 pt-3 border-t-1 border-dark-400/50">
                 <div class="text-sm font-medium mb-1 opacity-75">Start Point</div>
@@ -17257,6 +17751,12 @@
                         <button data-ftl-rerun-clear-yes class="cursor-pointer text-red-400 hover:opacity-100 font-bold" type="button">Yes</button>
                         <button data-ftl-rerun-clear-no class="cursor-pointer hover:opacity-100" type="button">No</button>
                     </div>
+                </div>
+                <div class="flex gap-1 items-center mt-2">
+                    <input data-ftl-rerun-code type="text" placeholder="Paste a share code or link…" class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <button data-ftl-rerun-watch class="bg-gradient-to-r from-secondary-500 to-secondary-600/75 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
+                        <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Watch</div>
+                    </button>
                 </div>
             </div>
         </div>
@@ -17342,6 +17842,12 @@
                 // Live-apply zone visibility in an open player
                 if (key === 'rerunClickableZones') {
                     refreshZones();
+                }
+
+                // Add/remove the sidebar Re-run panel immediately
+                if (key === 'rerunSidebarPanel') {
+                    if (newVal) tryInjectRerunPanel();
+                    else removeRerunPanel();
                 }
 
                 // Immediately notify page-level chat filter when any chat setting changes
@@ -17678,6 +18184,24 @@
             openRerunOverlay();
         });
 
+        // Watch a pasted share code as a preview (own re-run untouched)
+        const codeInput = contentArea.querySelector('[data-ftl-rerun-code]');
+        const watchBtn = contentArea.querySelector('[data-ftl-rerun-watch]');
+        watchBtn?.addEventListener('click', async () => {
+            const value = codeInput?.value.trim();
+            if (!value) return;
+            const err = await watchShareCode(value);
+            if (err) {
+                statusEl.textContent = err;
+                return;
+            }
+            codeInput.value = '';
+            dispatchPageEvent('modalClose');
+        });
+        codeInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') watchBtn?.click();
+        });
+
         // Clear the set re-run (two-step confirm, same pattern as log clear)
         const clearBtn = contentArea.querySelector('[data-ftl-rerun-clear]');
         const clearConfirm = contentArea.querySelector('[data-ftl-rerun-clear-confirm]');
@@ -17881,7 +18405,7 @@
 
     // ── Shared: create a search input and wire up filtering ─────────────
 
-    function createSearchInput(placeholder, items, container, insertAfter, trailing) {
+    function createSearchInput(placeholder, items, container, insertAfter, trailing, autoFocus = true) {
         const wrapper = document.createElement('div');
         wrapper.setAttribute('data-ftl-sdk', 'item-search');
         wrapper.className = 'px-1 pb-1';
@@ -17924,8 +18448,9 @@
             container.style.alignContent = query ? 'start' : '';
         });
 
-        // Auto-focus
-        setTimeout(() => input.focus(), 50);
+        // Auto-focus (skipped for persistent hosts like the sidebar panel,
+        // where stealing focus on page load would be hostile)
+        if (autoFocus) setTimeout(() => input.focus(), 50);
 
         return wrapper;
     }
@@ -17942,9 +18467,14 @@
             const used = Array.from(options).filter(o => o.querySelector('img')).length;
             counter.textContent = `${used}/${options.length}`;
         };
+        // Initial fill runs before the counter is inserted into the DOM, so
+        // only the observer-driven updates check for removal: if a site
+        // re-render dropped us, self-clean (the injection pass re-adds).
         update();
-
-        const observer = new MutationObserver(update);
+        const observer = new MutationObserver(() => {
+            if (!counter.isConnected) { observer.disconnect(); return; }
+            update();
+        });
         observer.observe(grid, { childList: true, subtree: true });
         return { counter, observer };
     }
@@ -17986,6 +18516,66 @@
             });
             closeObserver.observe(portal, { childList: true });
             return;
+        }
+    }
+
+    // ── Sidebar inventory panel (Aug 2026 site layout) ──────────────────
+    // The site moved the inventory from a floating popup into a persistent
+    // left sidebar panel. Same img[alt] filtering; the grid's children are
+    // a live collection, so filtering tracks items as they change.
+
+    const CHEVRON_DOWN_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 184l144 144 144-144"></path></svg>';
+    const CHEVRON_UP_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 328l144-144 144 144"></path></svg>';
+
+    /**
+     * Compact header button (matches the site's small sidebar buttons)
+     * that toggles the inventory grid between its capped height and
+     * showing every slot at once.
+     */
+    function buildExpandButton(grid) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('data-ftl-sdk', 'inv-expand');
+        btn.title = 'Expand inventory';
+        btn.className = 'bg-gradient-to-r from-dark-400/75 to-dark-500/75 p-0.5 inline-flex items-center'
+            + ' justify-center cursor-pointer rounded-md hover:brightness-105'
+            + ' focus-visible:outline-1 focus-visible:outline-tertiary';
+        const face = document.createElement('div');
+        face.className = 'text-light-text bg-gradient-to-t from-dark-300 to-dark-400'
+            + ' active:bg-gradient-to-b active:from-dark-400 active:to-dark-300'
+            + ' border-light/25 active:border-light/15 p-0.5 rounded-sm';
+        face.innerHTML = CHEVRON_DOWN_SVG;
+        btn.appendChild(face);
+        btn.addEventListener('click', () => {
+            const expanded = grid.style.maxHeight === 'none';
+            // Inline style overrides the site's max-h-48 class; clearing it
+            // hands control back untouched.
+            grid.style.maxHeight = expanded ? '' : 'none';
+            face.innerHTML = expanded ? CHEVRON_DOWN_SVG : CHEVRON_UP_SVG;
+            btn.title = expanded ? 'Expand inventory' : 'Collapse inventory';
+        });
+        return btn;
+    }
+
+    function tryInjectSidebarInventorySearch() {
+        if (!getSetting('enableInventorySearch')) return;
+
+        const title = [...document.querySelectorAll('span.font-bold')].find(
+            t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+        if (!title) return;
+        const panel = title.closest('.shadow-panel');
+        if (panel.querySelector('[data-ftl-sdk="item-search"]')) return;
+        const grid = panel.querySelector('[role="option"]')?.closest('.grid');
+        if (!grid) return;
+
+        const header = title.parentElement;
+        const { counter } = buildSlotCounter(grid);
+        createSearchInput('Search inventory...', grid.children, grid, header, counter, false);
+
+        // Expand/collapse toggle alongside the panel's own header buttons
+        const cluster = header.querySelector('.ml-auto');
+        if (cluster && !cluster.querySelector('[data-ftl-sdk="inv-expand"]')) {
+            cluster.prepend(buildExpandButton(grid));
         }
     }
 
@@ -18435,12 +19025,106 @@
             }
         }
 
+        // ── Post-login sidebar injection watcher ────────────────────────
+        // Logged out, the left sidebar holds only the Events panel; logging
+        // in makes the site render Missions + Inventory — the anchors our
+        // sidebar injections need. Render timing varies wildly (slow while
+        // a season is live), so rather than guessing with timeouts we watch
+        // the sidebar container for panels appearing — element-scoped like
+        // the trade modal's grid observer, debounced, and torn down the
+        // moment the work is done. Never observes document/body. React can
+        // also swap the whole sidebar node on login, so a disconnected
+        // target triggers one re-find rather than a dead observer.
+        let sidebarWatchActive = false;
+
+        function watchSidebarForInjection() {
+            if (sidebarWatchActive) return;
+            if (!getSetting('enableInventorySearch') && !getSetting('rerunSidebarPanel')) return;
+
+            sidebarWatchActive = true;
+            const deadline = Date.now() + 120000; // hard cap; click pass backstops after
+            let observer = null;
+            let findTimer = null;
+            let debounce = null;
+
+            const stop = () => {
+                sidebarWatchActive = false;
+                if (observer) observer.disconnect();
+                if (findTimer) clearInterval(findTimer);
+                if (debounce) clearTimeout(debounce);
+                observer = null; findTimer = null; debounce = null;
+            };
+
+            // The sidebar exists even logged out (Events only) — climb from
+            // any panel title to its fixed left-edge container.
+            const findSidebar = () => {
+                const title = [...document.querySelectorAll('span.font-bold')].find(
+                    t => t.closest('.shadow-panel')?.closest('div.fixed')?.classList.contains('left-0'));
+                return title?.closest('div.fixed') ?? null;
+            };
+
+            // Returns true when there's nothing left for the watcher to do
+            // (each injection either succeeded or is disabled in settings).
+            const attempt = (sidebar) => {
+                tryInjectSidebarInventorySearch();
+                tryInjectRerunPanel();
+                const searchDone = !getSetting('enableInventorySearch')
+                    || !!sidebar.querySelector('[data-ftl-sdk="item-search"]');
+                const panelDone = !getSetting('rerunSidebarPanel')
+                    || !!sidebar.querySelector('[data-ftl-sdk="rerun-panel"]');
+                return searchDone && panelDone;
+            };
+
+            const observe = (sidebar) => {
+                observer = new MutationObserver(() => {
+                    if (debounce) return;
+                    debounce = setTimeout(() => {
+                        debounce = null;
+                        if (Date.now() > deadline) { stop(); return; }
+                        if (!sidebar.isConnected) {
+                            observer.disconnect(); observer = null;
+                            start();
+                            return;
+                        }
+                        if (attempt(sidebar)) stop();
+                    }, 150);
+                });
+                observer.observe(sidebar, { childList: true, subtree: true });
+            };
+
+            const start = () => {
+                const sidebar = findSidebar();
+                if (sidebar) {
+                    if (attempt(sidebar)) { stop(); return; }
+                    observe(sidebar);
+                    return;
+                }
+                // Sidebar not rendered at all yet — cheap re-check until it
+                // is, then hand over to the observer.
+                findTimer = setInterval(() => {
+                    if (Date.now() > deadline) { stop(); return; }
+                    const el = findSidebar();
+                    if (!el) return;
+                    clearInterval(findTimer); findTimer = null;
+                    if (attempt(el)) { stop(); return; }
+                    observe(el);
+                }, 500);
+            };
+
+            start();
+        }
+
         // ── Season Pass room auto-detection ─────────────────────────────
         // Wait for the user's auth cookie to appear, extract their UUID,
         // fetch their profile to check Season Pass status, then subscribe
         // to additional rooms if they have access and haven't turned it off.
 
         onUserIdDetected((userId) => {
+
+            // Logging in makes the site render the left sidebar's Missions/
+            // Inventory panels (logged out it holds only Events) — watch for
+            // them appearing rather than guessing at render timing.
+            watchSidebarForInjection();
 
             fetch(`https://api.fishtank.live/v1/profile/${userId}`)
                 .then(r => r.json())
@@ -18646,6 +19330,8 @@
         document.addEventListener('click', () => {
             setTimeout(tryInjectDropdownButton, 100);
             setTimeout(tryInjectInventorySearch, 100);
+            setTimeout(tryInjectSidebarInventorySearch, 100);
+            setTimeout(tryInjectRerunPanel, 100);
             setTimeout(tryInjectCraftingItemSearch, 100);
             // VOD player appears after clicking a grid tile — its React
             // render can lag the click, so check twice.
@@ -18659,6 +19345,26 @@
         // ── Hidden clickable zone detection ────────────────────────────────
 
         initZoneDetection();
+
+        // Sidebar injections are driven by login detection (see
+        // watchSidebarForInjection) plus the click pass as a backstop.
+
+        // ── Re-run share links ─────────────────────────────────────────────
+        // fishtank.live/#FTL1-s03-D11-1817-kitchen opens that moment as a
+        // preview (the user's own re-run position is never touched).
+
+        const shareHash = location.hash.match(/^#(FTL1-[A-Za-z0-9-]+)$/i)?.[1];
+        if (shareHash) {
+            history.replaceState(null, '', location.pathname + location.search);
+            setTimeout(async () => {
+                const err = await watchShareCode(shareHash);
+                if (err) {
+                    notify('Couldn\'t open share link', {
+                        description: err, type: 'info', duration: 6000,
+                    });
+                }
+            }, 1200);
+        }
 
         // ── Ping & IRC buttons in chat header ─────────────────────────────
 
@@ -18738,7 +19444,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.3.1',
+            description: 'v2.4.0',
             type: 'success',
             duration: 3000,
         });

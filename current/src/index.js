@@ -25,12 +25,13 @@ import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints
 import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, tryInjectIrcButton, toggleIrcMode, isIrcActive, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept, tryInjectVodControls } from './theatre.js';
-import { tryInjectInventorySearch, tryInjectCraftingItemSearch, initTradeSearch } from './inventory.js';
+import { tryInjectInventorySearch, tryInjectCraftingItemSearch, tryInjectSidebarInventorySearch, initTradeSearch } from './inventory.js';
 import { initArchiveGridSaver } from './archive-grid.js';
 import { initClockPersistence, isRerunActive } from './rerun.js';
-import { handleRerunEscape, openRerunOverlay } from './rerun-ui.js';
+import { handleRerunEscape, openRerunOverlay, watchShareCode } from './rerun-ui.js';
 import { handleZonesEscape } from './rerun-zones.js';
 import { tryInjectSiteZones } from './site-zones.js';
+import { tryInjectRerunPanel } from './rerun-panel.js';
 
 const DEBUG = false;
 
@@ -236,6 +237,95 @@ site.whenReady(async () => {
         }
     }
 
+    // ── Post-login sidebar injection watcher ────────────────────────
+    // Logged out, the left sidebar holds only the Events panel; logging
+    // in makes the site render Missions + Inventory — the anchors our
+    // sidebar injections need. Render timing varies wildly (slow while
+    // a season is live), so rather than guessing with timeouts we watch
+    // the sidebar container for panels appearing — element-scoped like
+    // the trade modal's grid observer, debounced, and torn down the
+    // moment the work is done. Never observes document/body. React can
+    // also swap the whole sidebar node on login, so a disconnected
+    // target triggers one re-find rather than a dead observer.
+    let sidebarWatchActive = false;
+
+    function watchSidebarForInjection() {
+        if (sidebarWatchActive) return;
+        if (!getSetting('enableInventorySearch') && !getSetting('rerunSidebarPanel')) return;
+
+        sidebarWatchActive = true;
+        const deadline = Date.now() + 120000; // hard cap; click pass backstops after
+        let observer = null;
+        let findTimer = null;
+        let debounce = null;
+
+        const stop = () => {
+            sidebarWatchActive = false;
+            if (observer) observer.disconnect();
+            if (findTimer) clearInterval(findTimer);
+            if (debounce) clearTimeout(debounce);
+            observer = null; findTimer = null; debounce = null;
+        };
+
+        // The sidebar exists even logged out (Events only) — climb from
+        // any panel title to its fixed left-edge container.
+        const findSidebar = () => {
+            const title = [...document.querySelectorAll('span.font-bold')].find(
+                t => t.closest('.shadow-panel')?.closest('div.fixed')?.classList.contains('left-0'));
+            return title?.closest('div.fixed') ?? null;
+        };
+
+        // Returns true when there's nothing left for the watcher to do
+        // (each injection either succeeded or is disabled in settings).
+        const attempt = (sidebar) => {
+            tryInjectSidebarInventorySearch();
+            tryInjectRerunPanel();
+            const searchDone = !getSetting('enableInventorySearch')
+                || !!sidebar.querySelector('[data-ftl-sdk="item-search"]');
+            const panelDone = !getSetting('rerunSidebarPanel')
+                || !!sidebar.querySelector('[data-ftl-sdk="rerun-panel"]');
+            return searchDone && panelDone;
+        };
+
+        const observe = (sidebar) => {
+            observer = new MutationObserver(() => {
+                if (debounce) return;
+                debounce = setTimeout(() => {
+                    debounce = null;
+                    if (Date.now() > deadline) { stop(); return; }
+                    if (!sidebar.isConnected) {
+                        observer.disconnect(); observer = null;
+                        start();
+                        return;
+                    }
+                    if (attempt(sidebar)) stop();
+                }, 150);
+            });
+            observer.observe(sidebar, { childList: true, subtree: true });
+        };
+
+        const start = () => {
+            const sidebar = findSidebar();
+            if (sidebar) {
+                if (attempt(sidebar)) { stop(); return; }
+                observe(sidebar);
+                return;
+            }
+            // Sidebar not rendered at all yet — cheap re-check until it
+            // is, then hand over to the observer.
+            findTimer = setInterval(() => {
+                if (Date.now() > deadline) { stop(); return; }
+                const el = findSidebar();
+                if (!el) return;
+                clearInterval(findTimer); findTimer = null;
+                if (attempt(el)) { stop(); return; }
+                observe(el);
+            }, 500);
+        };
+
+        start();
+    }
+
     // ── Season Pass room auto-detection ─────────────────────────────
     // Wait for the user's auth cookie to appear, extract their UUID,
     // fetch their profile to check Season Pass status, then subscribe
@@ -243,6 +333,11 @@ site.whenReady(async () => {
 
     site.onUserIdDetected((userId) => {
         log('User ID detected:', userId);
+
+        // Logging in makes the site render the left sidebar's Missions/
+        // Inventory panels (logged out it holds only Events) — watch for
+        // them appearing rather than guessing at render timing.
+        watchSidebarForInjection();
 
         fetch(`https://api.fishtank.live/v1/profile/${userId}`)
             .then(r => r.json())
@@ -450,6 +545,8 @@ site.whenReady(async () => {
     document.addEventListener('click', () => {
         setTimeout(tryInjectDropdownButton, 100);
         setTimeout(tryInjectInventorySearch, 100);
+        setTimeout(tryInjectSidebarInventorySearch, 100);
+        setTimeout(tryInjectRerunPanel, 100);
         setTimeout(tryInjectCraftingItemSearch, 100);
         // VOD player appears after clicking a grid tile — its React
         // render can lag the click, so check twice.
@@ -463,6 +560,26 @@ site.whenReady(async () => {
     // ── Hidden clickable zone detection ────────────────────────────────
 
     initZoneDetection();
+
+    // Sidebar injections are driven by login detection (see
+    // watchSidebarForInjection) plus the click pass as a backstop.
+
+    // ── Re-run share links ─────────────────────────────────────────────
+    // fishtank.live/#FTL1-s03-D11-1817-kitchen opens that moment as a
+    // preview (the user's own re-run position is never touched).
+
+    const shareHash = location.hash.match(/^#(FTL1-[A-Za-z0-9-]+)$/i)?.[1];
+    if (shareHash) {
+        history.replaceState(null, '', location.pathname + location.search);
+        setTimeout(async () => {
+            const err = await watchShareCode(shareHash);
+            if (err) {
+                ui.toasts.notify('Couldn\'t open share link', {
+                    description: err, type: 'info', duration: 6000,
+                });
+            }
+        }, 1200);
+    }
 
     // ── Ping & IRC buttons in chat header ─────────────────────────────
 

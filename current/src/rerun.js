@@ -179,10 +179,50 @@ export function formatClock(ms) {
     return archives.formatHouseClock(ms, !!getSetting('rerunClock12h'));
 }
 
+// ── Shared-moment preview ───────────────────────────────────────────
+// A share code opens as a PREVIEW: an in-memory anchor that overrides
+// the stored one while active. The user's own re-run is a pure
+// function of wall clock + stored anchor, so it keeps "airing"
+// untouched underneath — discarding the preview returns to it exactly
+// where it would have been. Nothing here is persisted: a refresh
+// always lands back on the user's own re-run.
+
+let preview = null; // { anchorVirtual, anchorReal, paused, pausedAtVirtual }
+
+export function isPreviewActive() {
+    return !!preview;
+}
+
+/**
+ * Start previewing a virtual moment (lands playing).
+ */
+export function startPreview(virtualMs) {
+    preview = { anchorVirtual: virtualMs, anchorReal: Date.now(), paused: false, pausedAtVirtual: null };
+}
+
+/**
+ * Discard the preview — the stored re-run takes over again.
+ */
+export function endPreview() {
+    preview = null;
+}
+
+/**
+ * Make the previewed moment the user's real re-run. The only preview
+ * path that writes to storage.
+ */
+export function adoptPreview() {
+    if (!preview) return;
+    const now = virtualNow();
+    preview = null;
+    if (now != null) setAnchor(now);
+}
+
 /**
  * Whether re-run mode is enabled AND has a usable anchor.
  */
 export function isRerunActive() {
+    if (preview) return true;
     return !!(getSetting('rerunEnabled')
         && getSetting('rerunAnchorVirtual') != null
         && getSetting('rerunAnchorReal') != null);
@@ -192,6 +232,11 @@ export function isRerunActive() {
  * Current virtual moment (show-time epoch ms), or null if no anchor.
  */
 export function virtualNow() {
+    if (preview) {
+        return preview.paused
+            ? preview.pausedAtVirtual
+            : preview.anchorVirtual + (Date.now() - preview.anchorReal);
+    }
     if (getSetting('rerunPaused') && getSetting('rerunPausedAtVirtual') != null) {
         return getSetting('rerunPausedAtVirtual');
     }
@@ -217,6 +262,7 @@ export function setAnchor(virtualMs) {
  * anchor is set.
  */
 export function clearAnchor() {
+    preview = null;
     updateSetting('rerunAnchorVirtual', null);
     updateSetting('rerunAnchorReal', null);
     updateSetting('rerunPaused', false);
@@ -224,6 +270,7 @@ export function clearAnchor() {
 }
 
 export function isPaused() {
+    if (preview) return preview.paused;
     return !!getSetting('rerunPaused');
 }
 
@@ -233,6 +280,11 @@ export function isPaused() {
 export function pause() {
     const now = virtualNow();
     if (now == null) return;
+    if (preview) {
+        preview.pausedAtVirtual = now;
+        preview.paused = true;
+        return;
+    }
     updateSetting('rerunPausedAtVirtual', now);
     updateSetting('rerunPaused', true);
 }
@@ -248,6 +300,11 @@ export function nudge(deltaMs) {
     let target = now + deltaMs;
     const bounds = getSeasonBounds();
     if (bounds) target = Math.min(Math.max(target, bounds.start), bounds.end - 1000);
+    if (preview) {
+        if (preview.paused) preview.pausedAtVirtual = target;
+        else startPreview(target);
+        return;
+    }
     if (isPaused()) {
         updateSetting('rerunPausedAtVirtual', target);
     } else {
@@ -259,6 +316,10 @@ export function nudge(deltaMs) {
  * Resume a paused clock from where it was frozen.
  */
 export function resume() {
+    if (preview) {
+        if (preview.pausedAtVirtual != null) startPreview(preview.pausedAtVirtual);
+        return;
+    }
     const frozenAt = getSetting('rerunPausedAtVirtual');
     if (frozenAt == null) return;
     setAnchor(frozenAt);
