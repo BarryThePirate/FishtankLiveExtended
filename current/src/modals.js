@@ -11,6 +11,7 @@
 
 import { getSetting, updateSetting } from './settings.js';
 import { enableArchiveGridSaver, disableArchiveGridSaver } from './archive-grid.js';
+import { tryApplyInventorySort, removeInventorySort } from './inventory.js';
 import { toggleRow, logPill } from './ui-helpers.js';
 import { renderRecipeResults } from './crafting.js';
 import {
@@ -408,6 +409,7 @@ function buildSettingsContent(modal) {
             ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
             ${toggleRow('Archive Grid Saver', 'archiveGridSaver', getSetting('archiveGridSaver'), 'Stops the archive grid downloading every camera at once — click a tile to play it')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
+            ${toggleRow('Sort Inventory by Rarity', 'sortInventoryByRarity', getSetting('sortInventoryByRarity'), 'Order inventory items rarest first')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
         </div>
 
@@ -489,14 +491,6 @@ function buildSettingsContent(modal) {
 
         <!-- Re-run tab -->
         <div data-ftl-panel="rerun" class="hidden">
-            <style>
-                /* Native time-picker icon renders black; invert it for the dark theme */
-                [data-ftl-rerun-time]::-webkit-calendar-picker-indicator {
-                    filter: invert(1);
-                    opacity: 0.75;
-                    cursor: pointer;
-                }
-            </style>
             ${toggleRow('Enable Re-run Mode', 'rerunEnabled', getSetting('rerunEnabled'), 'Replay the season archive as if it were live')}
             ${toggleRow('Clock Runs While Away', 'rerunTickWhileAway', getSetting('rerunTickWhileAway'), 'On: time passes even while you’re off the site, like live TV. Off: the clock only ticks while you’re here')}
             ${toggleRow('Clickable Room Zones', 'rerunClickableZones', getSetting('rerunClickableZones'), 'Click doorways in the video to move between rooms')}
@@ -515,7 +509,11 @@ function buildSettingsContent(modal) {
                     <select data-ftl-rerun-day class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
                         <option class="bg-dark text-light-text">Loading days…</option>
                     </select>
-                    <input data-ftl-rerun-time type="time" value="18:00" class="font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <input data-ftl-rerun-time type="text" value="18:00:00" placeholder="HH:mm:ss" style="width:5.2em" class="font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <select data-ftl-rerun-ampm class="hidden font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
+                        <option class="bg-dark text-light-text" value="AM">AM</option>
+                        <option class="bg-dark text-light-text" value="PM">PM</option>
+                    </select>
                     <button data-ftl-rerun-start class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
                         <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Start</div>
                     </button>
@@ -616,6 +614,12 @@ function wireUpToggles(contentArea) {
                 else disableArchiveGridSaver();
             }
 
+            // Live-apply inventory rarity sorting
+            if (key === 'sortInventoryByRarity') {
+                if (newVal) tryApplyInventorySort();
+                else removeInventorySort();
+            }
+
             // Disabling re-run mode closes its player immediately
             if (key === 'rerunEnabled' && !newVal) {
                 closeRerunOverlay();
@@ -624,6 +628,11 @@ function wireUpToggles(contentArea) {
             // Live-apply zone visibility in an open player
             if (key === 'rerunClickableZones') {
                 refreshZones();
+            }
+
+            // Live-switch the Start Point time picker between 12/24-hour
+            if (key === 'rerunClock12h') {
+                refreshRerunClockMode?.();
             }
 
             // Add/remove the sidebar Re-run panel immediately
@@ -890,14 +899,67 @@ function wireUpWordFilters(contentArea) {
 
 // ── Re-run panel ────────────────────────────────────────────────────
 
+// Set by wireUpRerun so the 12-Hour Clock toggle can live-switch the
+// Start Point time picker while the settings modal is open.
+let refreshRerunClockMode = null;
+
 function wireUpRerun(contentArea) {
     const seasonSelect = contentArea.querySelector('[data-ftl-rerun-season]');
     const daySelect = contentArea.querySelector('[data-ftl-rerun-day]');
     const timeInput = contentArea.querySelector('[data-ftl-rerun-time]');
+    const ampmSelect = contentArea.querySelector('[data-ftl-rerun-ampm]');
     const startBtn = contentArea.querySelector('[data-ftl-rerun-start]');
     const openBtn = contentArea.querySelector('[data-ftl-rerun-open]');
     const statusEl = contentArea.querySelector('[data-ftl-rerun-status]');
     if (!daySelect || !startBtn) return;
+
+    // ── 12/24-hour time picker ──────────────────────────────────────
+    // The picker is a plain text field, not a native time input: a
+    // native input's 12/24-hour display is locked to the browser
+    // locale in BOTH directions, so it can't honour the 12-Hour
+    // Clock setting. Values cross these helpers as canonical 24h
+    // 'HH:MM:SS' either way. mode12 tracks the mode the input is
+    // currently RENDERED in — it can lag the setting briefly while
+    // applyClockMode converts the shown value.
+    let mode12 = false; // markup default '18:00:00' is 24h
+
+    // Canonical 24h 'HH:MM:SS' from the picker, or null if unparseable
+    function getPickedTime() {
+        const m = timeInput.value.trim().match(/^(\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?$/);
+        if (!m) return null;
+        let h = Number(m[1]);
+        const min = Number(m[2] ?? 0), sec = Number(m[3] ?? 0);
+        if (min > 59 || sec > 59) return null;
+        if (mode12) {
+            if (h < 1 || h > 12) return null;
+            if (ampmSelect?.value === 'PM' && h !== 12) h += 12;
+            if (ampmSelect?.value === 'AM' && h === 12) h = 0;
+        } else if (h > 23) {
+            return null;
+        }
+        return [h, min, sec].map(n => String(n).padStart(2, '0')).join(':');
+    }
+
+    // Show a canonical 24h 'HH:MM' / 'HH:MM:SS' in the picker
+    function setPickedTime(timeStr) {
+        const [h, min, sec] = `${timeStr}:00`.split(':');
+        if (!mode12) {
+            timeInput.value = `${h}:${min}:${sec}`;
+            return;
+        }
+        timeInput.value = `${((Number(h) + 11) % 12) + 1}:${min}:${sec}`;
+        if (ampmSelect) ampmSelect.value = Number(h) >= 12 ? 'PM' : 'AM';
+    }
+
+    function applyClockMode() {
+        const current = getPickedTime() || '18:00:00'; // read in the old mode before switching
+        mode12 = !!getSetting('rerunClock12h');
+        timeInput.placeholder = mode12 ? 'h:mm:ss' : 'HH:mm:ss';
+        ampmSelect?.classList.toggle('hidden', !mode12);
+        setPickedTime(current);
+    }
+    applyClockMode();
+    refreshRerunClockMode = () => { if (timeInput.isConnected) applyClockMode(); };
 
     // Populate the day picker from the current season's day listing
     function populateDays() {
@@ -916,7 +978,7 @@ function wireUpRerun(contentArea) {
             if (now != null) {
                 const dayNumber = virtualMsToDayNumber(now);
                 if (dayNumber) daySelect.value = String(dayNumber);
-                if (timeInput) timeInput.value = archives.formatHouseClock(now).slice(0, 5);
+                if (timeInput) setPickedTime(archives.formatHouseClock(now));
             }
         });
     }
@@ -948,7 +1010,8 @@ function wireUpRerun(contentArea) {
     }, 1000);
 
     startBtn.addEventListener('click', () => {
-        const virtualMs = dayTimeToVirtualMs(Number(daySelect.value), timeInput.value || '00:00');
+        const picked = getPickedTime();
+        const virtualMs = picked == null ? null : dayTimeToVirtualMs(Number(daySelect.value), picked);
         if (virtualMs == null) {
             statusEl.textContent = 'Pick a valid day and time first.';
             return;

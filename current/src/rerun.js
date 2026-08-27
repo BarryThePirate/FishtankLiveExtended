@@ -148,8 +148,9 @@ export function getSeasonBounds() {
 }
 
 /**
- * Convert a season day number (1-based) + 'HH:MM' HOUSE-local time
- * string to epoch ms. Returns null if out of range or unparseable.
+ * Convert a season day number (1-based) + 'HH:MM' or 'HH:MM:SS'
+ * HOUSE-local time string to epoch ms. Returns null if out of range
+ * or unparseable.
  */
 export function dayTimeToVirtualMs(dayNumber, timeStr) {
     const day = seasonDays[dayNumber - 1];

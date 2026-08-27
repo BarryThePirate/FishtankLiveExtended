@@ -25,7 +25,7 @@ import { loadRecipesFromCache, fetchRecipes, initCraftingHints, initUseItemHints
 import { openSettingsModal, openModal, tryInjectDropdownButton, tryInjectPingButton, tryInjectIrcButton, toggleIrcMode, isIrcActive, updatePingBadge, setCurrentUsername, setActiveModal, setUserPasses } from './modals.js';
 import { initZoneDetection } from './zones.js';
 import { toggleTheatre, enterTheatre, exitTheatre, isTheatreActive, initTheatreButtonIntercept, tryInjectVodControls } from './theatre.js';
-import { tryInjectInventorySearch, tryInjectCraftingItemSearch, tryInjectSidebarInventorySearch, initTradeSearch } from './inventory.js';
+import { tryInjectInventorySearch, tryInjectCraftingItemSearch, tryInjectSidebarInventorySearch, initTradeSearch, tryApplyInventorySort } from './inventory.js';
 import { initArchiveGridSaver } from './archive-grid.js';
 import { initClockPersistence, isRerunActive } from './rerun.js';
 import { handleRerunEscape, openRerunOverlay, watchShareCode } from './rerun-ui.js';
@@ -280,6 +280,7 @@ site.whenReady(async () => {
         const attempt = (sidebar) => {
             tryInjectSidebarInventorySearch();
             tryInjectRerunPanel();
+            tryApplyInventorySort();
             const searchDone = !getSetting('enableInventorySearch')
                 || !!sidebar.querySelector('[data-ftl-sdk="item-search"]');
             const panelDone = !getSetting('rerunSidebarPanel')
@@ -547,6 +548,7 @@ site.whenReady(async () => {
         setTimeout(tryInjectInventorySearch, 100);
         setTimeout(tryInjectSidebarInventorySearch, 100);
         setTimeout(tryInjectRerunPanel, 100);
+        setTimeout(tryApplyInventorySort, 100);
         setTimeout(tryInjectCraftingItemSearch, 100);
         // VOD player appears after clicking a grid tile — its React
         // render can lag the click, so check twice.
@@ -565,7 +567,7 @@ site.whenReady(async () => {
     // watchSidebarForInjection) plus the click pass as a backstop.
 
     // ── Re-run share links ─────────────────────────────────────────────
-    // fishtank.live/#FTL1-s03-D11-1817-kitchen opens that moment as a
+    // fishtank.live/#FTL1-s03-D11-181745-kitchen opens that moment as a
     // preview (the user's own re-run position is never touched).
 
     const shareHash = location.hash.match(/^#(FTL1-[A-Za-z0-9-]+)$/i)?.[1];

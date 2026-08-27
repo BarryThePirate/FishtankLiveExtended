@@ -336,6 +336,11 @@ function findSiteGrid() {
 
 function positionOverlay() {
     if (!overlay || !dockedGrid) return;
+    // A site re-render (e.g. clicking the logo re-routes to home) can
+    // replace the grid while keeping the wrapper — and our observers
+    // fire as the old grid collapses. Never measure a dead grid: keep
+    // the last good geometry until ensureMounted re-docks to the new one.
+    if (!dockedGrid.isConnected) return;
     // Theatre mode owns the overlay's geometry while active.
     if (document.body.classList.contains('ftl-theatre-mode')) return;
     // Cover the grid's CONTENT box, not its border box — the site grid's
@@ -408,7 +413,10 @@ function unmountListeners() {
 function ensureMounted() {
     if (!overlay) return;
     const fixedMode = overlay.classList.contains('ftl-rerun-fixed');
-    if (overlay.isConnected && !fixedMode) return;
+    // Docked is only healthy while the grid we measure against is
+    // still mounted — the overlay itself can survive a re-render that
+    // swaps the grid out from under it.
+    if (overlay.isConnected && !fixedMode && dockedGrid?.isConnected) return;
     if (overlay.isConnected && fixedMode && !findSiteGrid()) return;
     unmountListeners();
     restoreChatZ();
@@ -481,6 +489,15 @@ function clockText() {
 }
 
 // ── Overlay lifecycle ───────────────────────────────────────────────
+
+/**
+ * Room code the player is currently focused on, or null when the
+ * player is closed or showing the grid (used by the sidebar panel's
+ * Share button so its links carry the room being watched).
+ */
+export function getFocusedRoom() {
+    return focusedRoom;
+}
 
 export function isRerunUiOpen() {
     return !!overlay;
@@ -579,7 +596,7 @@ export async function openRerunOverlay() {
     intervals.push(setInterval(refreshTiles, TILE_REFRESH_MS));
     intervals.push(setInterval(() => { if (focusedRoom) syncPlayback(false); }, SYNC_CHECK_MS));
     document.addEventListener('visibilitychange', onVisibilityChange);
-    document.addEventListener('keydown', onNudgeKeys);
+    document.addEventListener('keydown', onPlayerKeys);
 }
 
 export function closeRerunOverlay() {
@@ -591,7 +608,7 @@ export function closeRerunOverlay() {
     if (resyncTimeout) { clearTimeout(resyncTimeout); resyncTimeout = null; }
     unmountListeners();
     document.removeEventListener('visibilitychange', onVisibilityChange);
-    document.removeEventListener('keydown', onNudgeKeys);
+    document.removeEventListener('keydown', onPlayerKeys);
     restoreChatZ();
     document.body.classList.remove('ftl-rerun-open');
     document.body.classList.remove('ftl-rerun-fixed-open');
@@ -732,18 +749,22 @@ function makeNudgeButtons() {
 }
 
 /**
- * Arrow-key nudging: ←/→ = ±1m, Shift = ±5m, Ctrl = ±1h. Works in
- * fullscreen and theatre with zero on-screen chrome.
+ * Player keys, matching video-player convention: ←/→ = ±5s,
+ * Space = pause/resume. Works in fullscreen and theatre with zero
+ * on-screen chrome. Bigger jumps live on the nudge buttons.
  */
-function onNudgeKeys(e) {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+function onPlayerKeys(e) {
     if (!overlay) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-    const dir = e.key === 'ArrowRight' ? 1 : -1;
-    const ms = (e.ctrlKey || e.metaKey) ? 3600000 : e.shiftKey ? 300000 : 60000;
+    if (e.key === ' ') {
+        e.preventDefault();
+        togglePause();
+        return;
+    }
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
-    nudgeClock(dir * ms);
+    nudgeClock(e.key === 'ArrowRight' ? 5000 : -5000);
 }
 
 function nudgeClock(deltaMs) {

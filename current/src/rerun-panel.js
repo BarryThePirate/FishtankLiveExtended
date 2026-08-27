@@ -17,7 +17,8 @@ import {
     virtualNow, virtualMsToDayNumber, isPaused, pause, resume,
     clearAnchor, formatClock, loadSeasonData,
 } from './rerun.js';
-import { openRerunOverlay, closeRerunOverlay, updatePauseUi } from './rerun-ui.js';
+import { openRerunOverlay, closeRerunOverlay, updatePauseUi, getFocusedRoom } from './rerun-ui.js';
+import { encodeShareCode, shareUrl } from './rerun-share.js';
 
 const PANEL_ID = 'ftl-rerun-sidebar-panel';
 const COLLAPSED_KEY = 'rerun-panel-collapsed';
@@ -136,6 +137,21 @@ function buildPanel() {
     clockEl.className = 'font-secondary tabular-nums text-xs leading-tight mt-0.5 text-green-400';
     info.append(seasonEl, clockEl);
 
+    // Share: copy a link to this exact moment to the clipboard — with
+    // the room when the player is open on one, else landing on the grid
+    const shareBtn = smallTextButton('Share', 'secondary', () => {
+        const code = encodeShareCode(getSetting('rerunSeason'), virtualNow(), getFocusedRoom());
+        if (!code) return;
+        const url = shareUrl(code);
+        const face = shareBtn.firstElementChild;
+        navigator.clipboard.writeText(url).then(() => {
+            face.textContent = 'Copied!';
+            setTimeout(() => { face.textContent = 'Share'; }, 2000);
+        }).catch(() => {
+            prompt('Copy this share link:', url);
+        });
+    });
+
     const btnRow = document.createElement('div');
     btnRow.className = 'flex gap-1 p-0.5';
     btnRow.append(
@@ -144,6 +160,7 @@ function buildPanel() {
             closeRerunOverlay();
             openRerunOverlay();
         }),
+        shareBtn,
         smallTextButton('Clear', 'primary', () => {
             if (!confirm('Clear your re-run start point?')) return;
             clearAnchor();

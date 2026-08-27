@@ -169,6 +169,13 @@ function buildExpandButton(grid) {
     return btn;
 }
 
+// Collapsing the panel with its own "-" button unmounts the grid, and
+// reopening mounts a NEW grid element — while our search, counter, and
+// expand button survive in the header, wired to the dead grid. Track
+// the grid we wired so the injection pass can spot that staleness and
+// rebuild against the new grid.
+let sidebarWired = null; // { grid, counterObserver }
+
 export function tryInjectSidebarInventorySearch() {
     if (!getSetting('enableInventorySearch')) return;
 
@@ -176,19 +183,121 @@ export function tryInjectSidebarInventorySearch() {
         t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
     if (!title) return;
     const panel = title.closest('.shadow-panel');
-    if (panel.querySelector('[data-ftl-sdk="item-search"]')) return;
+
+    if (panel.querySelector('[data-ftl-sdk="item-search"]')) {
+        if (sidebarWired?.grid?.isConnected) return;
+        // Stale — the grid was rebuilt behind our widgets
+        panel.querySelector('[data-ftl-sdk="item-search"]')?.remove();
+        panel.querySelector('[data-ftl-sdk="inv-expand"]')?.remove();
+        sidebarWired?.counterObserver?.disconnect();
+        sidebarWired = null;
+    }
+
     const grid = panel.querySelector('[role="option"]')?.closest('.grid');
     if (!grid) return;
 
     const header = title.parentElement;
-    const { counter } = buildSlotCounter(grid);
+    const { counter, observer: counterObserver } = buildSlotCounter(grid);
     createSearchInput('Search inventory...', grid.children, grid, header, counter, false);
+    sidebarWired = { grid, counterObserver };
 
     // Expand/collapse toggle alongside the panel's own header buttons
     const cluster = header.querySelector('.ml-auto');
     if (cluster && !cluster.querySelector('[data-ftl-sdk="inv-expand"]')) {
         cluster.prepend(buildExpandButton(grid));
     }
+}
+
+// ── Inventory rarity sort ───────────────────────────────────────────
+// The site marks rarity on each tile's inner frame with a border
+// color class (the site's full ItemRarity enum: COMMON white,
+// UNCOMMON green, RARE blue, EPIC purple). Sorting sets CSS `order`
+// on the grid children instead of moving DOM nodes, so React re-renders
+// are never fought — the order survives them, and a scoped observer
+// reapplies it as items come and go.
+
+const RARITY_RANKS = [
+    ['border-purple-600', 1], // epic
+    ['border-blue-500', 2],   // rare
+    ['border-green-500', 3],  // uncommon
+    ['border-white/75', 4],   // common
+];
+const RANK_UNKNOWN = 0; // unrecognised color — likely a newer, rarer tier
+const RANK_EMPTY = 5;   // empty slots last
+
+function tileRank(tile) {
+    const frame = tile.querySelector('img')?.parentElement;
+    if (!frame) return RANK_EMPTY;
+    for (const [cls, rank] of RARITY_RANKS) {
+        if (frame.classList.contains(cls)) return rank;
+    }
+    return RANK_UNKNOWN;
+}
+
+const sortObservers = new Map(); // grid element → MutationObserver
+
+function applyOrders(grid) {
+    for (const tile of grid.children) {
+        const order = String(tileRank(tile));
+        if (tile.style.order !== order) tile.style.order = order;
+    }
+}
+
+function clearOrders(grid) {
+    for (const tile of grid.children) tile.style.order = '';
+}
+
+// Both inventory hosts: the sidebar panel grid and (older layout)
+// the floating popup's listbox.
+function findInventoryGrids() {
+    const grids = [];
+    const title = [...document.querySelectorAll('span.font-bold')].find(
+        t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+    const sidebarGrid = title?.closest('.shadow-panel')
+        ?.querySelector('[role="option"]')?.closest('.grid');
+    if (sidebarGrid) grids.push(sidebarGrid);
+    for (const portal of document.querySelectorAll('[data-floating-ui-portal]')) {
+        const dialog = portal.querySelector('[role="dialog"]');
+        const popupTitle = dialog?.querySelector('.font-bold');
+        if (popupTitle?.textContent.trim() !== 'Inventory') continue;
+        const grid = dialog.querySelector('[role="listbox"]');
+        if (grid) grids.push(grid);
+    }
+    return grids;
+}
+
+export function tryApplyInventorySort() {
+    if (!getSetting('sortInventoryByRarity')) return;
+    // Prune entries whose grid was unmounted (e.g. panel collapsed) —
+    // their observers will never fire again
+    for (const [grid, observer] of sortObservers) {
+        if (!grid.isConnected) {
+            observer.disconnect();
+            sortObservers.delete(grid);
+        }
+    }
+    for (const grid of findInventoryGrids()) {
+        if (sortObservers.has(grid)) continue;
+        applyOrders(grid);
+        const observer = new MutationObserver(() => {
+            if (!grid.isConnected) {
+                observer.disconnect();
+                sortObservers.delete(grid);
+                return;
+            }
+            applyOrders(grid);
+        });
+        observer.observe(grid, { childList: true, subtree: true });
+        sortObservers.set(grid, observer);
+    }
+}
+
+export function removeInventorySort() {
+    for (const [grid, observer] of sortObservers) {
+        observer.disconnect();
+        if (grid.isConnected) clearOrders(grid);
+    }
+    sortObservers.clear();
 }
 
 // ── Crafting item select (inside #modal) ────────────────────────────

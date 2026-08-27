@@ -6118,28 +6118,31 @@
     // A share code pins a moment in a season to a compact, human-readable
     // string that means the same real moment for everyone:
     //
-    //   FTL1-s03-D11-1817-kitchen
-    //   └┬─┘ └┬┘ └┬┘ └┬─┘ └──┬──┘
-    // version season day HHMM  room (optional)
+    //   FTL1-s03-D11-181745-kitchen
+    //   └┬─┘ └┬┘ └┬┘ └─┬──┘ └──┬──┘
+    // version season day HHMMSS room (optional)
     //
     // Day and time are HOUSE time (see above), so a code reads naturally
     // in chat AND resolves to the same absolute moment for every user.
+    // The seconds pair is optional on parse (early codes were HHMM and
+    // resolve to :00), but always emitted — a shared moment is a moment.
     // Codes also travel as links via the URL fragment:
-    // https://fishtank.live/#FTL1-s03-D11-1817-kitchen (fragments never
+    // https://fishtank.live/#FTL1-s03-D11-181745-kitchen (fragments never
     // reach the server; extensions pick them up client-side).
 
-    const SHARE_CODE_RE = /^FTL1-(s\d{2})-D(\d{1,2})-(\d{2})(\d{2})(?:-([a-z0-9-]+))?$/i;
+    const SHARE_CODE_RE = /^FTL1-(s\d{2})-D(\d{1,2})-(\d{2})(\d{2})(\d{2})?(?:-([a-z0-9-]+))?$/i;
 
     /**
      * Build a share code from structured fields.
      *
      * @param {{season: string, day: number, time: string, room?: string|null}} parts
-     *   - season e.g. 's03'; day 1-based; time 'HH:MM' house-local 24h;
-     *     room code or null for "land on the grid"
-     * @returns {string} e.g. 'FTL1-s03-D11-1817-kitchen'
+     *   - season e.g. 's03'; day 1-based; time 'HH:MM:SS' house-local 24h
+     *     ('HH:MM' also accepted, meaning :00); room code or null for
+     *     "land on the grid"
+     * @returns {string} e.g. 'FTL1-s03-D11-181745-kitchen'
      */
     function buildShareCode({ season, day, time, room }) {
-      return `FTL1-${season}-D${day}-${time.replace(':', '')}${room ? `-${room}` : ''}`;
+      return `FTL1-${season}-D${day}-${time.replace(/:/g, '')}${room ? `-${room}` : ''}`;
     }
 
     /**
@@ -6148,7 +6151,8 @@
      *
      * @param {string} input
      * @returns {{season: string, day: number, time: string, room: string|null}|null}
-     *   null if the input isn't a valid code
+     *   null if the input isn't a valid code. time is always 'HH:MM:SS'
+     *   (seconds-less codes resolve to :00).
      */
     function parseShareCode(input) {
       if (typeof input !== 'string') return null;
@@ -6160,12 +6164,13 @@
       const day = parseInt(m[2], 10);
       const hh = parseInt(m[3], 10);
       const mm = parseInt(m[4], 10);
-      if (day < 1 || hh > 23 || mm > 59) return null;
+      const ss = m[5] ? parseInt(m[5], 10) : 0;
+      if (day < 1 || hh > 23 || mm > 59 || ss > 59) return null;
       return {
         season: m[1].toLowerCase(),
         day,
-        time: `${m[3]}:${m[4]}`,
-        room: m[5] ? m[5].toLowerCase() : null,
+        time: `${m[3]}:${m[4]}:${m[5] || '00'}`,
+        room: m[6] ? m[6].toLowerCase() : null,
       };
     }
 
@@ -12257,6 +12262,7 @@
         revealHiddenZones: true,
         enhancedTheatreMode: true,
         enableInventorySearch: true,
+        sortInventoryByRarity: false, // CSS-order inventory tiles rarest first
         enablePingIndicator: true,
         // Season Pass monitoring disabled — these don't work reliably and
         // cause problems, so the settings are turned off and hidden for all
@@ -12306,7 +12312,12 @@
 
     function updateSetting(key, value) {
         settings[key] = value;
-        set(SETTINGS_KEY, settings);
+        // Merge the changed key onto what's CURRENTLY stored rather than
+        // dumping this tab's whole snapshot — another tab (or a newer
+        // build) may have written keys this tab's in-memory copy never
+        // knew about, and a stale snapshot would wipe them.
+        const stored = get(SETTINGS_KEY, null);
+        set(SETTINGS_KEY, { ...(stored || {}), [key]: value });
     }
 
     /**
@@ -13802,6 +13813,394 @@
     }
 
     /**
+     * inventory.js — Inventory and item grid search
+     *
+     * Injects search inputs into:
+     * 1. The inventory popup (floating-ui-portal, NOT a modal)
+     * 2. The crafting modal's "Select Item" overlay (inside #modal)
+     *
+     * Both grids use img[alt] for item names — the same filtering logic
+     * works for both. Empty slots are hidden while searching.
+     *
+     * Detection: uses a click listener + short poll. NO persistent body observers.
+     */
+
+
+    let inventoryInjected = false;
+
+    // ── Shared: create a search input and wire up filtering ─────────────
+
+    function createSearchInput(placeholder, items, container, insertAfter, trailing, autoFocus = true) {
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('data-ftl-sdk', 'item-search');
+        wrapper.className = 'px-1 pb-1';
+
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 mt-2 mb-1';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = placeholder;
+        input.className = 'font-regular text-md leading-none flex-1 min-w-0 h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25';
+
+        // Prevent keyboard shortcuts from firing while typing
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+        });
+
+        row.appendChild(input);
+        if (trailing) row.appendChild(trailing);
+        wrapper.appendChild(row);
+        insertAfter.insertAdjacentElement('afterend', wrapper);
+
+        input.addEventListener('input', () => {
+            const query = input.value.trim().toLowerCase();
+
+            for (const item of items) {
+                const img = item.querySelector('img');
+                if (!img) {
+                    // Empty slot — hide when searching, show when cleared
+                    item.style.display = query ? 'none' : '';
+                    continue;
+                }
+
+                const name = (img.alt || '').toLowerCase();
+                const match = !query || name.includes(query);
+                item.style.display = match ? '' : 'none';
+            }
+
+            // Pack visible items to the top of the grid
+            container.style.alignContent = query ? 'start' : '';
+        });
+
+        // Auto-focus (skipped for persistent hosts like the sidebar panel,
+        // where stealing focus on page load would be hostile)
+        if (autoFocus) setTimeout(() => input.focus(), 50);
+
+        return wrapper;
+    }
+
+    // ── Inventory popup (floating-ui-portal) ────────────────────────────
+
+    function buildSlotCounter(grid) {
+        const counter = document.createElement('span');
+        counter.setAttribute('data-ftl-sdk', 'slot-counter');
+        counter.className = 'font-regular text-md leading-none opacity-60 tabular-nums text-right min-w-[3.5rem] shrink-0';
+
+        const update = () => {
+            const options = grid.querySelectorAll('[role="option"]');
+            const used = Array.from(options).filter(o => o.querySelector('img')).length;
+            counter.textContent = `${used}/${options.length}`;
+        };
+        // Initial fill runs before the counter is inserted into the DOM, so
+        // only the observer-driven updates check for removal: if a site
+        // re-render dropped us, self-clean (the injection pass re-adds).
+        update();
+        const observer = new MutationObserver(() => {
+            if (!counter.isConnected) { observer.disconnect(); return; }
+            update();
+        });
+        observer.observe(grid, { childList: true, subtree: true });
+        return { counter, observer };
+    }
+
+    function tryInjectInventorySearch() {
+        if (inventoryInjected) return;
+        if (!getSetting('enableInventorySearch')) return;
+
+        const portals = document.querySelectorAll('[data-floating-ui-portal]');
+        for (const portal of portals) {
+            const dialog = portal.querySelector('[role="dialog"]');
+            if (!dialog) continue;
+
+            const header = dialog.querySelector('.flex.h-\\[32px\\].items-center');
+            if (!header) continue;
+            const title = header.querySelector('.font-bold');
+            if (!title || title.textContent.trim() !== 'Inventory') continue;
+
+            const grid = dialog.querySelector('[role="listbox"]');
+            if (!grid) continue;
+
+            if (dialog.querySelector('[data-ftl-sdk="item-search"]')) {
+                inventoryInjected = true;
+                return;
+            }
+
+            const items = grid.querySelectorAll('[role="option"]');
+            const { counter, observer: slotCounterObserver } = buildSlotCounter(grid);
+            createSearchInput('Search inventory...', items, grid, header, counter);
+            inventoryInjected = true;
+
+            // Clean up when inventory closes
+            const closeObserver = new MutationObserver(() => {
+                if (!portal.contains(dialog)) {
+                    closeObserver.disconnect();
+                    if (slotCounterObserver) slotCounterObserver.disconnect();
+                    inventoryInjected = false;
+                }
+            });
+            closeObserver.observe(portal, { childList: true });
+            return;
+        }
+    }
+
+    // ── Sidebar inventory panel (Aug 2026 site layout) ──────────────────
+    // The site moved the inventory from a floating popup into a persistent
+    // left sidebar panel. Same img[alt] filtering; the grid's children are
+    // a live collection, so filtering tracks items as they change.
+
+    const CHEVRON_DOWN_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 184l144 144 144-144"></path></svg>';
+    const CHEVRON_UP_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 328l144-144 144 144"></path></svg>';
+
+    /**
+     * Compact header button (matches the site's small sidebar buttons)
+     * that toggles the inventory grid between its capped height and
+     * showing every slot at once.
+     */
+    function buildExpandButton(grid) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('data-ftl-sdk', 'inv-expand');
+        btn.title = 'Expand inventory';
+        btn.className = 'bg-gradient-to-r from-dark-400/75 to-dark-500/75 p-0.5 inline-flex items-center'
+            + ' justify-center cursor-pointer rounded-md hover:brightness-105'
+            + ' focus-visible:outline-1 focus-visible:outline-tertiary';
+        const face = document.createElement('div');
+        face.className = 'text-light-text bg-gradient-to-t from-dark-300 to-dark-400'
+            + ' active:bg-gradient-to-b active:from-dark-400 active:to-dark-300'
+            + ' border-light/25 active:border-light/15 p-0.5 rounded-sm';
+        face.innerHTML = CHEVRON_DOWN_SVG;
+        btn.appendChild(face);
+        btn.addEventListener('click', () => {
+            const expanded = grid.style.maxHeight === 'none';
+            // Inline style overrides the site's max-h-48 class; clearing it
+            // hands control back untouched.
+            grid.style.maxHeight = expanded ? '' : 'none';
+            face.innerHTML = expanded ? CHEVRON_DOWN_SVG : CHEVRON_UP_SVG;
+            btn.title = expanded ? 'Expand inventory' : 'Collapse inventory';
+        });
+        return btn;
+    }
+
+    // Collapsing the panel with its own "-" button unmounts the grid, and
+    // reopening mounts a NEW grid element — while our search, counter, and
+    // expand button survive in the header, wired to the dead grid. Track
+    // the grid we wired so the injection pass can spot that staleness and
+    // rebuild against the new grid.
+    let sidebarWired = null; // { grid, counterObserver }
+
+    function tryInjectSidebarInventorySearch() {
+        if (!getSetting('enableInventorySearch')) return;
+
+        const title = [...document.querySelectorAll('span.font-bold')].find(
+            t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+        if (!title) return;
+        const panel = title.closest('.shadow-panel');
+
+        if (panel.querySelector('[data-ftl-sdk="item-search"]')) {
+            if (sidebarWired?.grid?.isConnected) return;
+            // Stale — the grid was rebuilt behind our widgets
+            panel.querySelector('[data-ftl-sdk="item-search"]')?.remove();
+            panel.querySelector('[data-ftl-sdk="inv-expand"]')?.remove();
+            sidebarWired?.counterObserver?.disconnect();
+            sidebarWired = null;
+        }
+
+        const grid = panel.querySelector('[role="option"]')?.closest('.grid');
+        if (!grid) return;
+
+        const header = title.parentElement;
+        const { counter, observer: counterObserver } = buildSlotCounter(grid);
+        createSearchInput('Search inventory...', grid.children, grid, header, counter, false);
+        sidebarWired = { grid, counterObserver };
+
+        // Expand/collapse toggle alongside the panel's own header buttons
+        const cluster = header.querySelector('.ml-auto');
+        if (cluster && !cluster.querySelector('[data-ftl-sdk="inv-expand"]')) {
+            cluster.prepend(buildExpandButton(grid));
+        }
+    }
+
+    // ── Inventory rarity sort ───────────────────────────────────────────
+    // The site marks rarity on each tile's inner frame with a border
+    // color class (the site's full ItemRarity enum: COMMON white,
+    // UNCOMMON green, RARE blue, EPIC purple). Sorting sets CSS `order`
+    // on the grid children instead of moving DOM nodes, so React re-renders
+    // are never fought — the order survives them, and a scoped observer
+    // reapplies it as items come and go.
+
+    const RARITY_RANKS = [
+        ['border-purple-600', 1], // epic
+        ['border-blue-500', 2],   // rare
+        ['border-green-500', 3],  // uncommon
+        ['border-white/75', 4],   // common
+    ];
+    const RANK_UNKNOWN = 0; // unrecognised color — likely a newer, rarer tier
+    const RANK_EMPTY = 5;   // empty slots last
+
+    function tileRank(tile) {
+        const frame = tile.querySelector('img')?.parentElement;
+        if (!frame) return RANK_EMPTY;
+        for (const [cls, rank] of RARITY_RANKS) {
+            if (frame.classList.contains(cls)) return rank;
+        }
+        return RANK_UNKNOWN;
+    }
+
+    const sortObservers = new Map(); // grid element → MutationObserver
+
+    function applyOrders(grid) {
+        for (const tile of grid.children) {
+            const order = String(tileRank(tile));
+            if (tile.style.order !== order) tile.style.order = order;
+        }
+    }
+
+    function clearOrders(grid) {
+        for (const tile of grid.children) tile.style.order = '';
+    }
+
+    // Both inventory hosts: the sidebar panel grid and (older layout)
+    // the floating popup's listbox.
+    function findInventoryGrids() {
+        const grids = [];
+        const title = [...document.querySelectorAll('span.font-bold')].find(
+            t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
+        const sidebarGrid = title?.closest('.shadow-panel')
+            ?.querySelector('[role="option"]')?.closest('.grid');
+        if (sidebarGrid) grids.push(sidebarGrid);
+        for (const portal of document.querySelectorAll('[data-floating-ui-portal]')) {
+            const dialog = portal.querySelector('[role="dialog"]');
+            const popupTitle = dialog?.querySelector('.font-bold');
+            if (popupTitle?.textContent.trim() !== 'Inventory') continue;
+            const grid = dialog.querySelector('[role="listbox"]');
+            if (grid) grids.push(grid);
+        }
+        return grids;
+    }
+
+    function tryApplyInventorySort() {
+        if (!getSetting('sortInventoryByRarity')) return;
+        // Prune entries whose grid was unmounted (e.g. panel collapsed) —
+        // their observers will never fire again
+        for (const [grid, observer] of sortObservers) {
+            if (!grid.isConnected) {
+                observer.disconnect();
+                sortObservers.delete(grid);
+            }
+        }
+        for (const grid of findInventoryGrids()) {
+            if (sortObservers.has(grid)) continue;
+            applyOrders(grid);
+            const observer = new MutationObserver(() => {
+                if (!grid.isConnected) {
+                    observer.disconnect();
+                    sortObservers.delete(grid);
+                    return;
+                }
+                applyOrders(grid);
+            });
+            observer.observe(grid, { childList: true, subtree: true });
+            sortObservers.set(grid, observer);
+        }
+    }
+
+    function removeInventorySort() {
+        for (const [grid, observer] of sortObservers) {
+            observer.disconnect();
+            if (grid.isConnected) clearOrders(grid);
+        }
+        sortObservers.clear();
+    }
+
+    // ── Crafting item select (inside #modal) ────────────────────────────
+
+    function tryInjectCraftingItemSearch() {
+        if (!getSetting('enableInventorySearch')) return;
+
+        const modal = document.getElementById('modal');
+        if (!modal) return;
+
+        // Find "Select Item" title — it's a .font-bold inside the item select overlay
+        const titles = modal.querySelectorAll('.font-bold');
+        let title = null;
+        for (const t of titles) {
+            if (t.textContent.trim() === 'Select Item') {
+                title = t;
+                break;
+            }
+        }
+        if (!title) return;
+
+        // The overlay is the parent container with the grid
+        const overlay = title.closest('.absolute');
+        if (!overlay) return;
+
+        // Already injected
+        if (overlay.querySelector('[data-ftl-sdk="item-search"]')) return;
+
+        const grid = overlay.querySelector('.grid.grid-cols-5');
+        if (!grid) return;
+
+        // Get ALL direct children of the grid — both item buttons and empty placeholder divs
+        const items = grid.children;
+        createSearchInput('Search items...', items, grid, title);
+    }
+
+    // ── Trade modal item search (inside #modal) ─────────────────────────
+
+    function initTradeSearch() {
+        if (!getSetting('enableInventorySearch')) return;
+
+        // Poll for #modal to exist (React renders it after the modalOpen event)
+        let attempts = 0;
+        const poll = setInterval(() => {
+            attempts++;
+            const modal = document.getElementById('modal');
+            if (modal) {
+                clearInterval(poll);
+                injectTradeSearch(modal);
+            } else if (attempts > 20) {
+                clearInterval(poll);
+            }
+        }, 50);
+
+        document.addEventListener('modalClose', () => clearInterval(poll), { once: true });
+    }
+
+    function injectTradeSearch(modal) {
+        // Watch for the item grid to appear inside the trade modal
+        const observer = new MutationObserver(() => {
+            const grid = modal.querySelector('.grid.grid-cols-5');
+            if (!grid) return;
+            if (modal.querySelector('[data-ftl-sdk="item-search"]')) {
+                observer.disconnect();
+                return;
+            }
+
+            const gridParent = grid.parentElement;
+            if (!gridParent) return;
+
+            createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+            observer.disconnect();
+        });
+
+        observer.observe(modal, { childList: true, subtree: true });
+
+        // Check immediately in case grid already exists
+        const grid = modal.querySelector('.grid.grid-cols-5');
+        if (grid && !modal.querySelector('[data-ftl-sdk="item-search"]')) {
+            const gridParent = grid.parentElement;
+            if (gridParent) {
+                createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
+                observer.disconnect();
+            }
+        }
+
+        document.addEventListener('modalClose', () => observer.disconnect(), { once: true });
+    }
+
+    /**
      * rerun.js — Re-run mode: virtual clock + schedule state
      *
      * Personal "as live" archive playback. The user anchors a virtual
@@ -13948,8 +14347,9 @@
     }
 
     /**
-     * Convert a season day number (1-based) + 'HH:MM' HOUSE-local time
-     * string to epoch ms. Returns null if out of range or unparseable.
+     * Convert a season day number (1-based) + 'HH:MM' or 'HH:MM:SS'
+     * HOUSE-local time string to epoch ms. Returns null if out of range
+     * or unparseable.
      */
     function dayTimeToVirtualMs(dayNumber, timeStr) {
         const day = seasonDays[dayNumber - 1];
@@ -14280,7 +14680,7 @@
     /**
      * rerun-share.js — Share codes for re-run moments
      *
-     * The code format itself (FTL1-s03-D11-1817-kitchen) lives in the SDK
+     * The code format itself (FTL1-s03-D11-181745-kitchen) lives in the SDK
      * (archives.buildShareCode / parseShareCode / shareUrl) so other tools
      * can speak it. This module is the extension-side glue: resolving the
      * re-run's virtual clock to the day/time fields a code carries.
@@ -14295,7 +14695,7 @@
         if (virtualMs == null) return null;
         const day = virtualMsToDayNumber(virtualMs);
         if (day == null) return null;
-        const time = formatHouseClock(virtualMs).slice(0, 5);
+        const time = formatHouseClock(virtualMs); // full HH:MM:SS — the code pins the second
         return buildShareCode({ season, day, time, room });
     }
 
@@ -15992,6 +16392,11 @@
 
     function positionOverlay() {
         if (!overlay || !dockedGrid) return;
+        // A site re-render (e.g. clicking the logo re-routes to home) can
+        // replace the grid while keeping the wrapper — and our observers
+        // fire as the old grid collapses. Never measure a dead grid: keep
+        // the last good geometry until ensureMounted re-docks to the new one.
+        if (!dockedGrid.isConnected) return;
         // Theatre mode owns the overlay's geometry while active.
         if (document.body.classList.contains('ftl-theatre-mode')) return;
         // Cover the grid's CONTENT box, not its border box — the site grid's
@@ -16064,7 +16469,10 @@
     function ensureMounted() {
         if (!overlay) return;
         const fixedMode = overlay.classList.contains('ftl-rerun-fixed');
-        if (overlay.isConnected && !fixedMode) return;
+        // Docked is only healthy while the grid we measure against is
+        // still mounted — the overlay itself can survive a re-render that
+        // swaps the grid out from under it.
+        if (overlay.isConnected && !fixedMode && dockedGrid?.isConnected) return;
         if (overlay.isConnected && fixedMode && !findSiteGrid()) return;
         unmountListeners();
         restoreChatZ();
@@ -16134,6 +16542,17 @@
         if (now == null) return '';
         const day = virtualMsToDayNumber(now);
         return `${day != null ? `Day ${day}` : ''}  ${formatClock(now)}`;
+    }
+
+    // ── Overlay lifecycle ───────────────────────────────────────────────
+
+    /**
+     * Room code the player is currently focused on, or null when the
+     * player is closed or showing the grid (used by the sidebar panel's
+     * Share button so its links carry the room being watched).
+     */
+    function getFocusedRoom() {
+        return focusedRoom;
     }
 
     /**
@@ -16229,7 +16648,7 @@
         intervals.push(setInterval(refreshTiles, TILE_REFRESH_MS));
         intervals.push(setInterval(() => { if (focusedRoom) syncPlayback(false); }, SYNC_CHECK_MS));
         document.addEventListener('visibilitychange', onVisibilityChange);
-        document.addEventListener('keydown', onNudgeKeys);
+        document.addEventListener('keydown', onPlayerKeys);
     }
 
     function closeRerunOverlay() {
@@ -16241,7 +16660,7 @@
         if (resyncTimeout) { clearTimeout(resyncTimeout); resyncTimeout = null; }
         unmountListeners();
         document.removeEventListener('visibilitychange', onVisibilityChange);
-        document.removeEventListener('keydown', onNudgeKeys);
+        document.removeEventListener('keydown', onPlayerKeys);
         restoreChatZ();
         document.body.classList.remove('ftl-rerun-open');
         document.body.classList.remove('ftl-rerun-fixed-open');
@@ -16382,18 +16801,22 @@
     }
 
     /**
-     * Arrow-key nudging: ←/→ = ±1m, Shift = ±5m, Ctrl = ±1h. Works in
-     * fullscreen and theatre with zero on-screen chrome.
+     * Player keys, matching video-player convention: ←/→ = ±5s,
+     * Space = pause/resume. Works in fullscreen and theatre with zero
+     * on-screen chrome. Bigger jumps live on the nudge buttons.
      */
-    function onNudgeKeys(e) {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    function onPlayerKeys(e) {
         if (!overlay) return;
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-        const dir = e.key === 'ArrowRight' ? 1 : -1;
-        const ms = (e.ctrlKey || e.metaKey) ? 3600000 : e.shiftKey ? 300000 : 60000;
+        if (e.key === ' ') {
+            e.preventDefault();
+            togglePause();
+            return;
+        }
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
         e.preventDefault();
-        nudgeClock(dir * ms);
+        nudgeClock(e.key === 'ArrowRight' ? 5000 : -5e3);
     }
 
     function nudgeClock(deltaMs) {
@@ -17147,6 +17570,21 @@
         clockEl.className = 'font-secondary tabular-nums text-xs leading-tight mt-0.5 text-green-400';
         info.append(seasonEl, clockEl);
 
+        // Share: copy a link to this exact moment to the clipboard — with
+        // the room when the player is open on one, else landing on the grid
+        const shareBtn = smallTextButton('Share', 'secondary', () => {
+            const code = encodeShareCode(getSetting('rerunSeason'), virtualNow(), getFocusedRoom());
+            if (!code) return;
+            const url = shareUrl(code);
+            const face = shareBtn.firstElementChild;
+            navigator.clipboard.writeText(url).then(() => {
+                face.textContent = 'Copied!';
+                setTimeout(() => { face.textContent = 'Share'; }, 2000);
+            }).catch(() => {
+                prompt('Copy this share link:', url);
+            });
+        });
+
         const btnRow = document.createElement('div');
         btnRow.className = 'flex gap-1 p-0.5';
         btnRow.append(
@@ -17155,6 +17593,7 @@
                 closeRerunOverlay();
                 openRerunOverlay();
             }),
+            shareBtn,
             smallTextButton('Clear', 'primary', () => {
                 if (!confirm('Clear your re-run start point?')) return;
                 clearAnchor();
@@ -17626,6 +18065,7 @@
             ${toggleRow('Video Stutter Improver', 'videoStutterImprover', getSetting('videoStutterImprover'), 'Auto fixes the video when stutters causes playback issues')}
             ${toggleRow('Archive Grid Saver', 'archiveGridSaver', getSetting('archiveGridSaver'), 'Stops the archive grid downloading every camera at once — click a tile to play it')}
             ${toggleRow('Inventory Search', 'enableInventorySearch', getSetting('enableInventorySearch'), 'Search items in inventory and crafting')}
+            ${toggleRow('Sort Inventory by Rarity', 'sortInventoryByRarity', getSetting('sortInventoryByRarity'), 'Order inventory items rarest first')}
             ${toggleRow('Ping Indicator', 'enablePingIndicator', getSetting('enablePingIndicator'), 'Show unread ping button in chat header')}
         </div>
 
@@ -17707,14 +18147,6 @@
 
         <!-- Re-run tab -->
         <div data-ftl-panel="rerun" class="hidden">
-            <style>
-                /* Native time-picker icon renders black; invert it for the dark theme */
-                [data-ftl-rerun-time]::-webkit-calendar-picker-indicator {
-                    filter: invert(1);
-                    opacity: 0.75;
-                    cursor: pointer;
-                }
-            </style>
             ${toggleRow('Enable Re-run Mode', 'rerunEnabled', getSetting('rerunEnabled'), 'Replay the season archive as if it were live')}
             ${toggleRow('Clock Runs While Away', 'rerunTickWhileAway', getSetting('rerunTickWhileAway'), 'On: time passes even while you’re off the site, like live TV. Off: the clock only ticks while you’re here')}
             ${toggleRow('Clickable Room Zones', 'rerunClickableZones', getSetting('rerunClickableZones'), 'Click doorways in the video to move between rooms')}
@@ -17733,7 +18165,11 @@
                     <select data-ftl-rerun-day class="font-regular text-md leading-none w-full h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
                         <option class="bg-dark text-light-text">Loading days…</option>
                     </select>
-                    <input data-ftl-rerun-time type="time" value="18:00" class="font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <input data-ftl-rerun-time type="text" value="18:00:00" placeholder="HH:mm:ss" style="width:5.2em" class="font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25" />
+                    <select data-ftl-rerun-ampm class="hidden font-regular text-md leading-none h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25">
+                        <option class="bg-dark text-light-text" value="AM">AM</option>
+                        <option class="bg-dark text-light-text" value="PM">PM</option>
+                    </select>
                     <button data-ftl-rerun-start class="bg-gradient-to-r from-primary-400 to-primary-500/90 h-[32px] px-3 inline-flex items-center justify-center text-center rounded-md cursor-pointer hover:brightness-105" type="button">
                         <div class="text-light-text text-shadow-md text-sm font-medium whitespace-nowrap leading-none">Start</div>
                     </button>
@@ -17834,6 +18270,12 @@
                     else disableArchiveGridSaver();
                 }
 
+                // Live-apply inventory rarity sorting
+                if (key === 'sortInventoryByRarity') {
+                    if (newVal) tryApplyInventorySort();
+                    else removeInventorySort();
+                }
+
                 // Disabling re-run mode closes its player immediately
                 if (key === 'rerunEnabled' && !newVal) {
                     closeRerunOverlay();
@@ -17842,6 +18284,11 @@
                 // Live-apply zone visibility in an open player
                 if (key === 'rerunClickableZones') {
                     refreshZones();
+                }
+
+                // Live-switch the Start Point time picker between 12/24-hour
+                if (key === 'rerunClock12h') {
+                    refreshRerunClockMode?.();
                 }
 
                 // Add/remove the sidebar Re-run panel immediately
@@ -18108,14 +18555,67 @@
 
     // ── Re-run panel ────────────────────────────────────────────────────
 
+    // Set by wireUpRerun so the 12-Hour Clock toggle can live-switch the
+    // Start Point time picker while the settings modal is open.
+    let refreshRerunClockMode = null;
+
     function wireUpRerun(contentArea) {
         const seasonSelect = contentArea.querySelector('[data-ftl-rerun-season]');
         const daySelect = contentArea.querySelector('[data-ftl-rerun-day]');
         const timeInput = contentArea.querySelector('[data-ftl-rerun-time]');
+        const ampmSelect = contentArea.querySelector('[data-ftl-rerun-ampm]');
         const startBtn = contentArea.querySelector('[data-ftl-rerun-start]');
         const openBtn = contentArea.querySelector('[data-ftl-rerun-open]');
         const statusEl = contentArea.querySelector('[data-ftl-rerun-status]');
         if (!daySelect || !startBtn) return;
+
+        // ── 12/24-hour time picker ──────────────────────────────────────
+        // The picker is a plain text field, not a native time input: a
+        // native input's 12/24-hour display is locked to the browser
+        // locale in BOTH directions, so it can't honour the 12-Hour
+        // Clock setting. Values cross these helpers as canonical 24h
+        // 'HH:MM:SS' either way. mode12 tracks the mode the input is
+        // currently RENDERED in — it can lag the setting briefly while
+        // applyClockMode converts the shown value.
+        let mode12 = false; // markup default '18:00:00' is 24h
+
+        // Canonical 24h 'HH:MM:SS' from the picker, or null if unparseable
+        function getPickedTime() {
+            const m = timeInput.value.trim().match(/^(\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?$/);
+            if (!m) return null;
+            let h = Number(m[1]);
+            const min = Number(m[2] ?? 0), sec = Number(m[3] ?? 0);
+            if (min > 59 || sec > 59) return null;
+            if (mode12) {
+                if (h < 1 || h > 12) return null;
+                if (ampmSelect?.value === 'PM' && h !== 12) h += 12;
+                if (ampmSelect?.value === 'AM' && h === 12) h = 0;
+            } else if (h > 23) {
+                return null;
+            }
+            return [h, min, sec].map(n => String(n).padStart(2, '0')).join(':');
+        }
+
+        // Show a canonical 24h 'HH:MM' / 'HH:MM:SS' in the picker
+        function setPickedTime(timeStr) {
+            const [h, min, sec] = `${timeStr}:00`.split(':');
+            if (!mode12) {
+                timeInput.value = `${h}:${min}:${sec}`;
+                return;
+            }
+            timeInput.value = `${((Number(h) + 11) % 12) + 1}:${min}:${sec}`;
+            if (ampmSelect) ampmSelect.value = Number(h) >= 12 ? 'PM' : 'AM';
+        }
+
+        function applyClockMode() {
+            const current = getPickedTime() || '18:00:00'; // read in the old mode before switching
+            mode12 = !!getSetting('rerunClock12h');
+            timeInput.placeholder = mode12 ? 'h:mm:ss' : 'HH:mm:ss';
+            ampmSelect?.classList.toggle('hidden', !mode12);
+            setPickedTime(current);
+        }
+        applyClockMode();
+        refreshRerunClockMode = () => { if (timeInput.isConnected) applyClockMode(); };
 
         // Populate the day picker from the current season's day listing
         function populateDays() {
@@ -18134,7 +18634,7 @@
                 if (now != null) {
                     const dayNumber = virtualMsToDayNumber(now);
                     if (dayNumber) daySelect.value = String(dayNumber);
-                    if (timeInput) timeInput.value = formatHouseClock(now).slice(0, 5);
+                    if (timeInput) setPickedTime(formatHouseClock(now));
                 }
             });
         }
@@ -18166,7 +18666,8 @@
         }, 1000);
 
         startBtn.addEventListener('click', () => {
-            const virtualMs = dayTimeToVirtualMs(Number(daySelect.value), timeInput.value || '00:00');
+            const picked = getPickedTime();
+            const virtualMs = picked == null ? null : dayTimeToVirtualMs(Number(daySelect.value), picked);
             if (virtualMs == null) {
                 statusEl.textContent = 'Pick a valid day and time first.';
                 return;
@@ -18385,285 +18886,6 @@
                 }
             }, 250);
         }
-    }
-
-    /**
-     * inventory.js — Inventory and item grid search
-     *
-     * Injects search inputs into:
-     * 1. The inventory popup (floating-ui-portal, NOT a modal)
-     * 2. The crafting modal's "Select Item" overlay (inside #modal)
-     *
-     * Both grids use img[alt] for item names — the same filtering logic
-     * works for both. Empty slots are hidden while searching.
-     *
-     * Detection: uses a click listener + short poll. NO persistent body observers.
-     */
-
-
-    let inventoryInjected = false;
-
-    // ── Shared: create a search input and wire up filtering ─────────────
-
-    function createSearchInput(placeholder, items, container, insertAfter, trailing, autoFocus = true) {
-        const wrapper = document.createElement('div');
-        wrapper.setAttribute('data-ftl-sdk', 'item-search');
-        wrapper.className = 'px-1 pb-1';
-
-        const row = document.createElement('div');
-        row.className = 'flex items-center gap-2 mt-2 mb-1';
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = placeholder;
-        input.className = 'font-regular text-md leading-none flex-1 min-w-0 h-[32px] p-1 shadow-md shadow-dark/15 rounded-md bg-gradient-to-t border-1 text-light-text text-shadow-input focus:shadow-lg focus-visible:outline-1 focus-visible:outline-tertiary from-dark-500 via-dark-500 to-dark-600 border-light/50 outline-1 outline-dark/25';
-
-        // Prevent keyboard shortcuts from firing while typing
-        input.addEventListener('keydown', (e) => {
-            e.stopPropagation();
-        });
-
-        row.appendChild(input);
-        if (trailing) row.appendChild(trailing);
-        wrapper.appendChild(row);
-        insertAfter.insertAdjacentElement('afterend', wrapper);
-
-        input.addEventListener('input', () => {
-            const query = input.value.trim().toLowerCase();
-
-            for (const item of items) {
-                const img = item.querySelector('img');
-                if (!img) {
-                    // Empty slot — hide when searching, show when cleared
-                    item.style.display = query ? 'none' : '';
-                    continue;
-                }
-
-                const name = (img.alt || '').toLowerCase();
-                const match = !query || name.includes(query);
-                item.style.display = match ? '' : 'none';
-            }
-
-            // Pack visible items to the top of the grid
-            container.style.alignContent = query ? 'start' : '';
-        });
-
-        // Auto-focus (skipped for persistent hosts like the sidebar panel,
-        // where stealing focus on page load would be hostile)
-        if (autoFocus) setTimeout(() => input.focus(), 50);
-
-        return wrapper;
-    }
-
-    // ── Inventory popup (floating-ui-portal) ────────────────────────────
-
-    function buildSlotCounter(grid) {
-        const counter = document.createElement('span');
-        counter.setAttribute('data-ftl-sdk', 'slot-counter');
-        counter.className = 'font-regular text-md leading-none opacity-60 tabular-nums text-right min-w-[3.5rem] shrink-0';
-
-        const update = () => {
-            const options = grid.querySelectorAll('[role="option"]');
-            const used = Array.from(options).filter(o => o.querySelector('img')).length;
-            counter.textContent = `${used}/${options.length}`;
-        };
-        // Initial fill runs before the counter is inserted into the DOM, so
-        // only the observer-driven updates check for removal: if a site
-        // re-render dropped us, self-clean (the injection pass re-adds).
-        update();
-        const observer = new MutationObserver(() => {
-            if (!counter.isConnected) { observer.disconnect(); return; }
-            update();
-        });
-        observer.observe(grid, { childList: true, subtree: true });
-        return { counter, observer };
-    }
-
-    function tryInjectInventorySearch() {
-        if (inventoryInjected) return;
-        if (!getSetting('enableInventorySearch')) return;
-
-        const portals = document.querySelectorAll('[data-floating-ui-portal]');
-        for (const portal of portals) {
-            const dialog = portal.querySelector('[role="dialog"]');
-            if (!dialog) continue;
-
-            const header = dialog.querySelector('.flex.h-\\[32px\\].items-center');
-            if (!header) continue;
-            const title = header.querySelector('.font-bold');
-            if (!title || title.textContent.trim() !== 'Inventory') continue;
-
-            const grid = dialog.querySelector('[role="listbox"]');
-            if (!grid) continue;
-
-            if (dialog.querySelector('[data-ftl-sdk="item-search"]')) {
-                inventoryInjected = true;
-                return;
-            }
-
-            const items = grid.querySelectorAll('[role="option"]');
-            const { counter, observer: slotCounterObserver } = buildSlotCounter(grid);
-            createSearchInput('Search inventory...', items, grid, header, counter);
-            inventoryInjected = true;
-
-            // Clean up when inventory closes
-            const closeObserver = new MutationObserver(() => {
-                if (!portal.contains(dialog)) {
-                    closeObserver.disconnect();
-                    if (slotCounterObserver) slotCounterObserver.disconnect();
-                    inventoryInjected = false;
-                }
-            });
-            closeObserver.observe(portal, { childList: true });
-            return;
-        }
-    }
-
-    // ── Sidebar inventory panel (Aug 2026 site layout) ──────────────────
-    // The site moved the inventory from a floating popup into a persistent
-    // left sidebar panel. Same img[alt] filtering; the grid's children are
-    // a live collection, so filtering tracks items as they change.
-
-    const CHEVRON_DOWN_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 184l144 144 144-144"></path></svg>';
-    const CHEVRON_UP_SVG = '<svg stroke="currentColor" fill="none" stroke-width="48" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="square" d="M112 328l144-144 144 144"></path></svg>';
-
-    /**
-     * Compact header button (matches the site's small sidebar buttons)
-     * that toggles the inventory grid between its capped height and
-     * showing every slot at once.
-     */
-    function buildExpandButton(grid) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.setAttribute('data-ftl-sdk', 'inv-expand');
-        btn.title = 'Expand inventory';
-        btn.className = 'bg-gradient-to-r from-dark-400/75 to-dark-500/75 p-0.5 inline-flex items-center'
-            + ' justify-center cursor-pointer rounded-md hover:brightness-105'
-            + ' focus-visible:outline-1 focus-visible:outline-tertiary';
-        const face = document.createElement('div');
-        face.className = 'text-light-text bg-gradient-to-t from-dark-300 to-dark-400'
-            + ' active:bg-gradient-to-b active:from-dark-400 active:to-dark-300'
-            + ' border-light/25 active:border-light/15 p-0.5 rounded-sm';
-        face.innerHTML = CHEVRON_DOWN_SVG;
-        btn.appendChild(face);
-        btn.addEventListener('click', () => {
-            const expanded = grid.style.maxHeight === 'none';
-            // Inline style overrides the site's max-h-48 class; clearing it
-            // hands control back untouched.
-            grid.style.maxHeight = expanded ? '' : 'none';
-            face.innerHTML = expanded ? CHEVRON_DOWN_SVG : CHEVRON_UP_SVG;
-            btn.title = expanded ? 'Expand inventory' : 'Collapse inventory';
-        });
-        return btn;
-    }
-
-    function tryInjectSidebarInventorySearch() {
-        if (!getSetting('enableInventorySearch')) return;
-
-        const title = [...document.querySelectorAll('span.font-bold')].find(
-            t => t.textContent.trim() === 'Inventory' && t.closest('.shadow-panel'));
-        if (!title) return;
-        const panel = title.closest('.shadow-panel');
-        if (panel.querySelector('[data-ftl-sdk="item-search"]')) return;
-        const grid = panel.querySelector('[role="option"]')?.closest('.grid');
-        if (!grid) return;
-
-        const header = title.parentElement;
-        const { counter } = buildSlotCounter(grid);
-        createSearchInput('Search inventory...', grid.children, grid, header, counter, false);
-
-        // Expand/collapse toggle alongside the panel's own header buttons
-        const cluster = header.querySelector('.ml-auto');
-        if (cluster && !cluster.querySelector('[data-ftl-sdk="inv-expand"]')) {
-            cluster.prepend(buildExpandButton(grid));
-        }
-    }
-
-    // ── Crafting item select (inside #modal) ────────────────────────────
-
-    function tryInjectCraftingItemSearch() {
-        if (!getSetting('enableInventorySearch')) return;
-
-        const modal = document.getElementById('modal');
-        if (!modal) return;
-
-        // Find "Select Item" title — it's a .font-bold inside the item select overlay
-        const titles = modal.querySelectorAll('.font-bold');
-        let title = null;
-        for (const t of titles) {
-            if (t.textContent.trim() === 'Select Item') {
-                title = t;
-                break;
-            }
-        }
-        if (!title) return;
-
-        // The overlay is the parent container with the grid
-        const overlay = title.closest('.absolute');
-        if (!overlay) return;
-
-        // Already injected
-        if (overlay.querySelector('[data-ftl-sdk="item-search"]')) return;
-
-        const grid = overlay.querySelector('.grid.grid-cols-5');
-        if (!grid) return;
-
-        // Get ALL direct children of the grid — both item buttons and empty placeholder divs
-        const items = grid.children;
-        createSearchInput('Search items...', items, grid, title);
-    }
-
-    // ── Trade modal item search (inside #modal) ─────────────────────────
-
-    function initTradeSearch() {
-        if (!getSetting('enableInventorySearch')) return;
-
-        // Poll for #modal to exist (React renders it after the modalOpen event)
-        let attempts = 0;
-        const poll = setInterval(() => {
-            attempts++;
-            const modal = document.getElementById('modal');
-            if (modal) {
-                clearInterval(poll);
-                injectTradeSearch(modal);
-            } else if (attempts > 20) {
-                clearInterval(poll);
-            }
-        }, 50);
-
-        document.addEventListener('modalClose', () => clearInterval(poll), { once: true });
-    }
-
-    function injectTradeSearch(modal) {
-        // Watch for the item grid to appear inside the trade modal
-        const observer = new MutationObserver(() => {
-            const grid = modal.querySelector('.grid.grid-cols-5');
-            if (!grid) return;
-            if (modal.querySelector('[data-ftl-sdk="item-search"]')) {
-                observer.disconnect();
-                return;
-            }
-
-            const gridParent = grid.parentElement;
-            if (!gridParent) return;
-
-            createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
-            observer.disconnect();
-        });
-
-        observer.observe(modal, { childList: true, subtree: true });
-
-        // Check immediately in case grid already exists
-        const grid = modal.querySelector('.grid.grid-cols-5');
-        if (grid && !modal.querySelector('[data-ftl-sdk="item-search"]')) {
-            const gridParent = grid.parentElement;
-            if (gridParent) {
-                createSearchInput('Search items...', grid.children, grid, gridParent.previousElementSibling || gridParent);
-                observer.disconnect();
-            }
-        }
-
-        document.addEventListener('modalClose', () => observer.disconnect(), { once: true });
     }
 
     /**
@@ -19068,6 +19290,7 @@
             const attempt = (sidebar) => {
                 tryInjectSidebarInventorySearch();
                 tryInjectRerunPanel();
+                tryApplyInventorySort();
                 const searchDone = !getSetting('enableInventorySearch')
                     || !!sidebar.querySelector('[data-ftl-sdk="item-search"]');
                 const panelDone = !getSetting('rerunSidebarPanel')
@@ -19332,6 +19555,7 @@
             setTimeout(tryInjectInventorySearch, 100);
             setTimeout(tryInjectSidebarInventorySearch, 100);
             setTimeout(tryInjectRerunPanel, 100);
+            setTimeout(tryApplyInventorySort, 100);
             setTimeout(tryInjectCraftingItemSearch, 100);
             // VOD player appears after clicking a grid tile — its React
             // render can lag the click, so check twice.
@@ -19350,7 +19574,7 @@
         // watchSidebarForInjection) plus the click pass as a backstop.
 
         // ── Re-run share links ─────────────────────────────────────────────
-        // fishtank.live/#FTL1-s03-D11-1817-kitchen opens that moment as a
+        // fishtank.live/#FTL1-s03-D11-181745-kitchen opens that moment as a
         // preview (the user's own re-run position is never touched).
 
         const shareHash = location.hash.match(/^#(FTL1-[A-Za-z0-9-]+)$/i)?.[1];
@@ -19444,7 +19668,7 @@
         // ── Startup toast ───────────────────────────────────────────────
 
         notify('FTL Extended loaded!', {
-            description: 'v2.4.0',
+            description: 'v2.4.1',
             type: 'success',
             duration: 3000,
         });

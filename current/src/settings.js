@@ -10,6 +10,7 @@ const DEFAULTS = {
     revealHiddenZones: true,
     enhancedTheatreMode: true,
     enableInventorySearch: true,
+    sortInventoryByRarity: false, // CSS-order inventory tiles rarest first
     enablePingIndicator: true,
     // Season Pass monitoring disabled — these don't work reliably and
     // cause problems, so the settings are turned off and hidden for all
@@ -59,7 +60,12 @@ export function getSetting(key) {
 
 export function updateSetting(key, value) {
     settings[key] = value;
-    storage.set(SETTINGS_KEY, settings);
+    // Merge the changed key onto what's CURRENTLY stored rather than
+    // dumping this tab's whole snapshot — another tab (or a newer
+    // build) may have written keys this tab's in-memory copy never
+    // knew about, and a stale snapshot would wipe them.
+    const stored = storage.get(SETTINGS_KEY, null);
+    storage.set(SETTINGS_KEY, { ...(stored || {}), [key]: value });
 }
 
 export function getSettings() {
